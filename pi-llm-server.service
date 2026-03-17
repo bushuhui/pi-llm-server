@@ -1,0 +1,28 @@
+[Unit]
+Description=PI-LLM Unified Server
+Documentation=file:///mnt/data0/home/bushuhui_data/msdk/pi-lab/0_demo_codes/code_cook/0_machine_learning_AI/LLM_API/LocalAI/README.md
+After=network.target embedding-server.service asr-server.service reranker-server.service mineru-server.service
+
+[Service]
+Type=simple
+User=pi-lab
+Group=pi-lab
+WorkingDirectory=/mnt/data0/home/bushuhui_data/msdk/pi-lab/0_demo_codes/code_cook/0_machine_learning_AI/LLM_API/LocalAI
+Environment="PATH=/home/tiger/anaconda3/envs/vllm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/tiger/anaconda3/envs/vllm/bin/python pi-llm-server.py --config config.yaml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pi-llm-server
+
+# 资源限制
+LimitNOFILE=65535
+LimitNPROC=4096
+
+# 安全选项
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

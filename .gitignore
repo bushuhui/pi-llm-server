@@ -1,0 +1,11 @@
+__pycache__
+embedding_*.txt
+embedding_test_*.json
+asr_transcription_*.txt
+reranker_ranked_*.json
+.mineru_api.log
+.mineru_api.pid
+results
+output
+logs
+.asr_tmp

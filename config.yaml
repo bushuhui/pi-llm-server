@@ -1,0 +1,104 @@
+# PI-LLM-Server 配置文件
+
+# 服务基础配置
+server:
+  host: "0.0.0.0"
+  port: 8090
+  workers: 4
+  log_level: "info"
+
+# API 访问控制
+auth:
+  enabled: true
+  tokens:
+    - "sk-embedding-token-001"
+    - "sk-asr-token-001"
+    - "sk-reranker-token-001"
+    - "sk-mineru-token-001"
+    - "sk-admin-token-001"  # 管理员 token（可访问所有端点）
+
+# 请求队列配置 - 差异化策略
+queue:
+  enabled: true
+  # 全局默认配置
+  default:
+    max_size: 100
+    max_concurrent: 1
+    timeout_seconds: 300
+  # 按服务类型差异化配置
+  services:
+    embedding:
+      max_concurrent: 4      # CPU 多核并行，可同时处理多个请求
+      max_size: 200
+      timeout_seconds: 60
+    reranker:
+      max_concurrent: 4      # CPU 多核并行
+      max_size: 200
+      timeout_seconds: 120
+    asr:
+      max_concurrent: 1      # GPU 推理，顺序处理避免显存溢出
+      max_size: 50
+      timeout_seconds: 600
+    mineru:
+      max_concurrent: 1      # PDF 解析耗时，顺序处理
+      max_size: 20
+      timeout_seconds: 1800
+
+# 子服务配置
+services:
+  embedding:
+    enabled: true
+    base_url: "http://127.0.0.1:8091"
+    timeout_seconds: 60
+    max_retries: 3
+    models:
+      - id: "unsloth/Qwen3-Embedding-0.6B"
+        path: "/home/bushuhui/.cache/modelscope/hub/models/unsloth/Qwen3-Embedding-0.6B"
+        device: "cpu"
+        launch_script: "python embedding_server.py --model-path {path} --device {device}"
+        python_path: "/home/tiger/anaconda3/envs/vllm/bin/python"
+
+  asr:
+    enabled: true
+    base_url: "http://127.0.0.1:8092"
+    timeout_seconds: 300
+    max_retries: 2
+    models:
+      - id: "Qwen/Qwen3-ASR-1.7B"
+        path: "/home/bushuhui/.cache/modelscope/hub/models/Qwen/Qwen3-ASR-1.7B"
+        gpu_memory_utilization: 0.9
+        max_model_len: 32768
+        launch_script: "python asr_server.py --model-path {path} --gpu-memory-utilization {gpu_memory_utilization}"
+        python_path: "/home/tiger/anaconda3/envs/vllm/bin/python"
+
+  reranker:
+    enabled: true
+    base_url: "http://127.0.0.1:8093"
+    timeout_seconds: 120
+    max_retries: 3
+    models:
+      - id: "Qwen/Qwen3-Reranker-0.6B"
+        path: "/home/bushuhui/.cache/modelscope/hub/models/Qwen/Qwen3-Reranker-0.6B"
+        device: "cpu"
+        launch_script: "python reranker_server.py --model-path {path} --device {device}"
+        python_path: "/home/tiger/anaconda3/envs/vllm/bin/python"
+
+  mineru:
+    enabled: true
+    base_url: "http://127.0.0.1:8094"
+    timeout_seconds: 600
+    max_retries: 1
+    launch_script: "./mineru_server.sh start"
+    working_directory: ""
+    python_path: "/home/tiger/anaconda3/envs/mineru/bin/python"
+    # 传递到 MinerU 的参数
+    config:
+      vram: "9000"
+      model_source: "modelscope"
+
+# 健康检查配置
+health_check:
+  enabled: true
+  interval_seconds: 30    # 轮询间隔
+  timeout_seconds: 10     # 单次检查超时
+  unhealthy_threshold: 3  # 连续失败次数判定为不健康

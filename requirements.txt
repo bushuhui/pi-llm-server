@@ -1,0 +1,31 @@
+# PI-LLM-Server 依赖
+
+# Web 框架
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+
+# HTTP 客户端
+httpx>=0.24.0
+
+# 配置管理
+pyyaml>=6.0
+pydantic>=2.0.0
+
+# 认证
+python-multipart>=0.0.6  # form-data 解析
+
+# 日志
+python-json-logger>=2.0.0  # 可选，JSON 日志格式
+
+# 子服务依赖 (如未安装请取消注释)
+# sentence-transformers  # Embedding 服务
+# transformers           # Reranker 服务
+# qwen-asr[vllm]         # ASR 服务
+# mineru                 # MinerU 服务 (需要在 conda 环境中)
+
+# ASR 长音频处理依赖（本地 vLLM）
+qwen-asr[vllm]         # ASR 模型和 vLLM 后端
+silero-vad             # 语音活动检测
+onnxruntime            # Silero VAD ONNX 运行时
+soundfile              # 音频文件读写
+librosa                # 音频加载和重采样
