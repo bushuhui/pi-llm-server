@@ -1,14 +1,20 @@
 
 ## TODO
+
+- [ ] 统一调整目录，把embedding等脚本挪到 backend 或者 scripts 目录；把 pi_llm_server 挪到 src 目录（或者其他目录）
+- [ ] 查一下pip安装的时候，如何把脚本等放到PATH能找到的目录
+- [ ] LLM service 测试
+
 - [x] 统一设置端口号
-- [ ] 统一设置API的URL访问地址，列出模型，状态，访问
+- [x] 统一设置API的URL访问地址，列出模型，状态，访问
 - [x] 日志、pid文件设置logs目录
-- [ ] LLM service 
-  - [ ] API具有队列能力，等处理完了再处理下一个
-  - [ ] 能够像LocalAI提供模型查询能力，状态、健康查询
-  - [ ] 能够把访问token设置在配置文件
-  - [ ] 能够设置每类的模型，模型文件地址
-  - [ ] 使用FastAPI，能够提供API的访问文档
+- [x] LLM service 
+  - [x] API具有队列能力，等处理完了再处理下一个
+  - [x] 能够像LocalAI提供模型查询能力，状态、健康查询
+  - [x] 能够把访问token设置在配置文件
+  - [x] 能够设置每类的模型，模型文件地址
+  - [x] 使用FastAPI，能够提供API的访问文档
+
 
 
 ## models

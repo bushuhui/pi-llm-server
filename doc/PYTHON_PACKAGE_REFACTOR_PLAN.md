@@ -1,0 +1,599 @@
+# PI-LLM-Server Python 标准化改造方案
+
+## 1. 当前项目结构分析
+
+### 1.1 现有目录结构
+
+```
+pi-llm-server/
+├── pi-llm-server.py              # 主程序入口
+├── pi_llm_server/                # 已有包结构（部分规范）
+│   ├── __init__.py
+│   ├── config.py
+│   ├── auth.py
+│   ├── queue_manager.py
+│   ├── health_monitor.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── embedding.py
+│   │   ├── asr.py
+│   │   ├── reranker.py
+│   │   └── mineru.py
+│   └── utils/
+│       ├── __init__.py
+│       ├── logging.py
+│       └── exceptions.py
+├── embedding_server.py           # 独立服务脚本
+├── embedding_client.py
+├── asr_server.py
+├── asr_client.py
+├── reranker_server.py
+├── reranker_client.py
+├── mineru_client.py
+├── mineru_server.sh
+├── config.yaml
+├── config.example.yaml
+├── requirements.txt
+├── README.md
+├── backup/                       # 备份文件（应移除或归档）
+├── data/                         # 测试数据
+├── logs/                         # 日志目录
+├── results/                      # 运行结果
+└── doc/                          # 文档
+```
+
+### 1.2 当前问题分析
+
+| 问题类别 | 具体问题 | 影响 |
+|----------|----------|------|
+| **包结构** | 缺少 `pyproject.toml`，无法通过 pip 安装 | 用户需手动配置 Python 路径 |
+| **入口点** | 主程序 `pi-llm-server.py` 在根目录，不是包内模块 | 无法使用 `pi-llm-server` 命令启动 |
+| **子服务定位** | `embedding_server.py` 等独立脚本与包代码并存 | 代码分散，维护困难 |
+| **备份文件** | `backup/` 目录包含旧代码 | 干扰开发，应归档 |
+| **测试缺失** | 无 `tests/` 目录 | 无法保证代码质量 |
+| **数据文件** | `data/`、`results/` 混在项目根目录 | 不符合 Python 项目规范 |
+
+---
+
+## 2. 标准 Python 项目结构目标
+
+### 2.1 推荐目录结构
+
+```
+pi-llm-server/
+├── pyproject.toml                # 【新增】项目配置和构建元数据
+├── README.md                     # 项目说明
+├── LICENSE                       # 【新增】许可证文件
+├── CHANGELOG.md                  # 【新增】变更日志（可选）
+├── requirements.txt              # 开发依赖（可选，pyproject.toml 替代）
+│
+├── src/
+│   └── pi_llm_server/            # 主包（移到 src/ 下）
+│       ├── __init__.py           # 导出 __version__ 等
+│       ├── __main__.py           # 【新增】python -m 入口
+│       ├── config.py
+│       ├── auth.py
+│       ├── queue_manager.py
+│       ├── health_monitor.py
+│       ├── cli.py                # 【新增】命令行入口
+│       ├── server.py             # 【新增】FastAPI app 定义
+│       │
+│       ├── services/
+│       │   ├── __init__.py
+│       │   ├── base.py           # 【新增】服务基类
+│       │   ├── embedding.py
+│       │   ├── asr.py
+│       │   ├── reranker.py
+│       │   └── mineru.py
+│       │
+│       └── utils/
+│           ├── __init__.py
+│           ├── logging.py
+│           └── exceptions.py
+│
+├── scripts/                      # 【新增】辅助脚本
+│   ├── start_embedding.py        # 原 embedding_server.py 迁移
+│   ├── start_asr.py              # 原 asr_server.py 迁移
+│   ├── start_reranker.py         # 原 reranker_server.py 迁移
+│   └── mineru_server.sh          # 迁移（或改为 Python）
+│
+├── tests/                        # 【新增】测试目录
+│   ├── __init__.py
+│   ├── test_config.py
+│   ├── test_auth.py
+│   ├── test_queue.py
+│   └── test_services.py
+│
+├── examples/                     # 【新增】使用示例
+│   ├── basic_usage.py
+│   └── config.yaml.example
+│
+├── data/                         # 测试数据（保留）
+│   └── ...
+│
+├── doc/                          # 文档（保留）
+│   └── ...
+│
+└── .gitignore                    # 更新以排除构建产物
+```
+
+---
+
+## 3. 核心改造步骤
+
+### 3.1 步骤 1: 创建 `pyproject.toml`
+
+这是标准 Python 项目的核心配置文件，定义项目元数据、依赖、入口点等。
+
+```toml
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pi-llm-server"
+version = "1.0.0"
+description = "统一 LLM 服务网关 - 集成 Embedding、ASR、Reranker、MinerU 服务"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "PI-Lab Team", email = "your-email@example.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "httpx>=0.24.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0.0",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+# Embedding 服务依赖
+embedding = [
+    "sentence-transformers>=2.2.0",
+    "torch>=2.0.0",
+]
+# Reranker 服务依赖
+reranker = [
+    "transformers>=4.30.0",
+    "torch>=2.0.0",
+]
+# ASR 服务依赖
+asr = [
+    "qwen-asr[vllm]>=0.1.0",
+    "silero-vad>=0.4.0",
+    "onnxruntime>=1.15.0",
+    "soundfile>=0.12.0",
+    "librosa>=0.10.0",
+]
+# MinerU 服务依赖（通常单独 conda 环境）
+mineru = [
+    # MinerU 需手动安装
+]
+# 开发依赖
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+# 全部依赖
+all = [
+    "pi-llm-server[embedding,reranker,asr,dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/pi-llm-server"
+Documentation = "https://pi-llm-server.readthedocs.io"
+Repository = "https://github.com/your-org/pi-llm-server"
+Changelog = "https://github.com/your-org/pi-llm-server/blob/main/CHANGELOG.md"
+
+[project.scripts]
+# 命令行入口点
+pi-llm-server = "pi_llm_server.cli:main"
+pi-llm-embedding = "pi_llm_server.services.embedding:main"
+pi-llm-asr = "pi_llm_server.services.asr:main"
+pi-llm-reranker = "pi_llm_server.services.reranker:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pi_llm_server = ["*.yaml", "*.yaml.example"]
+```
+
+**关键说明**:
+- `[project.scripts]`: 定义 pip 安装后可用的命令
+- `where = ["src"]`: 指定包在 `src/` 目录下
+- `[project.optional-dependencies]`: 允许用户按需安装依赖
+
+---
+
+### 3.2 步骤 2: 重构主程序入口
+
+#### 2.1 创建 `src/pi_llm_server/__main__.py`
+
+支持 `python -m pi_llm_server` 运行：
+
+```python
+"""
+允许通过 python -m pi_llm_server 启动服务
+"""
+from pi_llm_server.cli import main
+
+if __name__ == "__main__":
+    main()
+```
+
+#### 2.2 创建 `src/pi_llm_server/cli.py`
+
+命令行入口：
+
+```python
+#!/usr/bin/env python3
+"""
+PI-LLM-Server 命令行入口
+"""
+import argparse
+import sys
+from pi_llm_server.server import app
+from pi_llm_server.config import init_config
+import uvicorn
+
+def main():
+    parser = argparse.ArgumentParser(description="PI-LLM Server - 统一 LLM 服务网关")
+    parser.add_argument("--config", "-c", default="config.yaml", help="配置文件路径")
+    parser.add_argument("--host", default=None, help="服务主机地址")
+    parser.add_argument("--port", "-p", type=int, default=None, help="服务端口")
+    parser.add_argument("--log-level", default=None, choices=["debug", "info", "warning", "error"])
+
+    args = parser.parse_args()
+
+    # 加载配置并启动 (逻辑从原 pi-llm-server.py 迁移)
+    config = init_config(args.config)
+    host = args.host or config.server.host
+    port = args.port or config.server.port
+
+    uvicorn.run(app, host=host, port=port)
+
+if __name__ == "__main__":
+    main()
+```
+
+#### 2.3 创建 `src/pi_llm_server/server.py`
+
+FastAPI 应用定义（从原 `pi-llm-server.py` 迁移）：
+
+```python
+"""
+PI-LLM-Server FastAPI 应用定义
+"""
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期"""
+    # 启动逻辑
+    yield
+    # 关闭逻辑
+
+app = FastAPI(
+    title="PI-LLM Server",
+    description="统一 LLM 服务网关",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# 路由注册逻辑...
+```
+
+---
+
+### 3.3 步骤 3: 迁移子服务脚本到 `scripts/`
+
+将独立的 server 脚本迁移并重构：
+
+```
+scripts/
+├── start_embedding.py    # 原 embedding_server.py
+├── start_asr.py          # 原 asr_server.py
+├── start_reranker.py     # 原 reranker_server.py
+└── mineru_server.sh      # 迁移
+```
+
+**迁移方式**:
+
+1. 将原脚本复制到 `scripts/`
+2. 修改 import 路径（如果使用包内模块）
+3. 添加 shebang 并设置可执行权限
+
+**可选**: 将子服务也做成可安装包：
+
+```toml
+[project.scripts]
+start-embedding = "pi_llm_server.scripts.start_embedding:main"
+start-asr = "pi_llm_server.scripts.start_asr:main"
+```
+
+---
+
+### 3.4 步骤 4: 添加测试目录
+
+创建基础测试框架：
+
+```python
+# tests/test_config.py
+import pytest
+from pi_llm_server.config import ConfigManager
+
+def test_config_load():
+    """测试配置文件加载"""
+    config = ConfigManager("config.example.yaml")
+    assert config.server.port == 8090
+
+def test_token_validation():
+    """测试 Token 验证"""
+    config = ConfigManager("config.example.yaml")
+    assert config.validate_token("sk-admin-token-001", "/v1/embeddings")
+```
+
+---
+
+### 3.5 步骤 5: 清理和归档
+
+| 操作 | 目标 | 说明 |
+|------|------|------|
+| **移除** | `backup/` | 移入 git 归档分支或删除 |
+| **清理** | `__pycache__/` | 加入 `.gitignore` |
+| **归档** | `results/` | 移出主目录或加入 `.gitignore` |
+| **归档** | `logs/` | 加入 `.gitignore` |
+| **归档** | `data/` | 加入 `.gitignore`（测试数据保留） |
+| **归档** | `output/` | 加入 `.gitignore` |
+
+更新 `.gitignore`:
+
+```gitignore
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Results and output
+results/
+output/
+.asr_tmp/
+
+# Config files (keep example)
+config.yaml
+!config.example.yaml
+
+# Test data (optional)
+data/*.mp3
+data/*.pdf
+```
+
+---
+
+## 4. 安装和使用方式
+
+### 4.1 开发安装
+
+```bash
+# 进入项目目录
+cd pi-llm-server
+
+# 可编辑模式安装（开发推荐）
+pip install -e ".[all]"
+
+# 或只安装核心依赖
+pip install -e .
+
+# 或安装核心 + Embedding
+pip install -e ".[embedding]"
+```
+
+### 4.2 生产安装
+
+```bash
+# 从 PyPI 安装（发布后）
+pip install pi-llm-server
+
+# 或从 GitHub 安装
+pip install git+https://github.com/your-org/pi-llm-server.git
+
+# 或从源码安装
+pip install .
+```
+
+### 4.3 使用方式
+
+```bash
+# 方式 1: 使用命令行入口（推荐）
+pi-llm-server --config config.yaml
+
+# 方式 2: 使用 python -m
+python -m pi_llm_server --config config.yaml
+
+# 方式 3: 直接导入
+from pi_llm_server import app
+```
+
+---
+
+## 5. 改造检查清单
+
+### 阶段 1: 基础结构
+- [ ] 创建 `pyproject.toml`
+- [ ] 移动 `pi_llm_server/` 到 `src/pi_llm_server/`
+- [ ] 创建 `src/pi_llm_server/__main__.py`
+- [ ] 创建 `src/pi_llm_server/cli.py`
+- [ ] 创建 `src/pi_llm_server/server.py`
+- [ ] 更新 `src/pi_llm_server/__init__.py` 导出 `__version__`
+
+### 阶段 2: 子服务迁移
+- [ ] 创建 `scripts/` 目录
+- [ ] 迁移 `embedding_server.py` → `scripts/start_embedding.py`
+- [ ] 迁移 `asr_server.py` → `scripts/start_asr.py`
+- [ ] 迁移 `reranker_server.py` → `scripts/start_reranker.py`
+- [ ] 迁移 `mineru_server.sh` → `scripts/mineru_server.sh`
+
+### 阶段 3: 测试和文档
+- [ ] 创建 `tests/` 目录和基础测试
+- [ ] 创建 `examples/` 目录
+- [ ] 更新 `README.md` 添加安装说明
+- [ ] 创建 `CHANGELOG.md`
+
+### 阶段 4: 清理
+- [ ] 更新 `.gitignore`
+- [ ] 归档 `backup/` 目录
+- [ ] 清理 `__pycache__/`
+- [ ] 归档 `results/`、`logs/`
+
+### 阶段 5: 验证
+- [ ] 测试 `pip install -e .`
+- [ ] 测试 `pi-llm-server` 命令
+- [ ] 测试 `python -m pi_llm_server`
+- [ ] 运行测试套件
+
+---
+
+## 6. 额外建议
+
+### 6.1 版本管理
+
+- 使用语义化版本 (SemVer): `主版本。次版本.修订版本`
+- 在 `src/pi_llm_server/__init__.py` 中定义 `__version__`
+- 使用 `CHANGELOG.md` 跟踪变更
+
+### 6.2 持续集成
+
+建议添加 GitHub Actions 工作流：
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Run tests
+        run: pytest tests/ -v --cov=pi_llm_server
+```
+
+### 6.3 发布到 PyPI
+
+```bash
+# 安装构建工具
+pip install build twine
+
+# 构建分发包
+python -m build
+
+# 上传到 PyPI
+twine upload dist/*
+```
+
+### 6.4 文档站点
+
+使用 MkDocs 或 Sphinx 生成文档：
+
+```bash
+# MkDocs
+pip install mkdocs mkdocs-material
+mkdocs new docs-site
+```
+
+---
+
+## 7. 风险与注意事项
+
+| 风险 | 影响 | 缓解措施 |
+|------|------|----------|
+| **路径变更** | 配置文件、日志路径需更新 | 在文档中明确说明 |
+| **导入路径** | 原有 `from pi_llm_server` 需调整 | 保持包内导入不变 |
+| **客户端脚本** | `embedding_client.py` 等不受影响 | 保留在根目录或迁移到 `examples/` |
+| **MinerU 依赖** | 需单独 conda 环境 | 在文档中说明 |
+
+---
+
+## 8. 总结
+
+### 改造收益
+
+1. **标准化**: 符合 Python 打包规范，支持 pip 安装
+2. **易用性**: 用户可通过 `pi-llm-server` 命令直接启动
+3. **可维护性**: 代码组织清晰，便于扩展
+4. **可测试性**: 添加测试框架，保证质量
+5. **可扩展性**: 便于添加新功能模块
+
+### 优先级
+
+1. **高优先级**: `pyproject.toml` + 入口点配置
+2. **中优先级**: 子服务迁移、测试框架
+3. **低优先级**: CI/CD、文档站点
+
+---
+
+**文档版本**: 1.0
+**创建日期**: 2026-03-17
+**作者**: AI Assistant
