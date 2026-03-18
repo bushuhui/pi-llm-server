@@ -48,3 +48,8 @@ reranker 模型使用显存太多了，帮我写一个CPU版本的server
 
 你帮我把 asr_client.py 和 asr_client_toolkit.py 的对长音频的拆分然后解析的做法，做成web服务，可以参考 asr_server_0.py （具体的API 可以参考 README.md）里面的说明。可以使用FastAPI作为web服务的库。新写的程序可以保存为 asr_server.py 
 
+
+## 2026-03-18
+
+在 doc/PYTHON_PACKAGE_REFACTOR_PLAN.md 设计文档里面， 把 pi_llm_server 放在 src目录下，是不是目录太深了，把 pi_llm_server 直接放在项目根目录如何。先不写代码，只是把设计方案改进好
+

@@ -57,7 +57,7 @@ pi-llm-server/
 
 ## 2. 标准 Python 项目结构目标
 
-### 2.1 推荐目录结构
+### 2.1 推荐目录结构（根目录布局）
 
 ```
 pi-llm-server/
@@ -65,37 +65,41 @@ pi-llm-server/
 ├── README.md                     # 项目说明
 ├── LICENSE                       # 【新增】许可证文件
 ├── CHANGELOG.md                  # 【新增】变更日志（可选）
-├── requirements.txt              # 开发依赖（可选，pyproject.toml 替代）
+├── requirements-dev.txt          # 【新增】开发依赖（可选）
 │
-├── src/
-│   └── pi_llm_server/            # 主包（移到 src/ 下）
-│       ├── __init__.py           # 导出 __version__ 等
-│       ├── __main__.py           # 【新增】python -m 入口
-│       ├── config.py
-│       ├── auth.py
-│       ├── queue_manager.py
-│       ├── health_monitor.py
-│       ├── cli.py                # 【新增】命令行入口
-│       ├── server.py             # 【新增】FastAPI app 定义
-│       │
-│       ├── services/
-│       │   ├── __init__.py
-│       │   ├── base.py           # 【新增】服务基类
-│       │   ├── embedding.py
-│       │   ├── asr.py
-│       │   ├── reranker.py
-│       │   └── mineru.py
-│       │
-│       └── utils/
-│           ├── __init__.py
-│           ├── logging.py
-│           └── exceptions.py
+├── pi_llm_server/                # 主包（保留在根目录）
+│   ├── __init__.py               # 导出 __version__ 等
+│   ├── __main__.py               # 【新增】python -m 入口
+│   ├── cli.py                    # 【新增】命令行入口
+│   ├── server.py                 # 【新增】FastAPI app 定义
+│   ├── config.py
+│   ├── auth.py
+│   ├── queue_manager.py
+│   ├── health_monitor.py
+│   │
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── base.py               # 【新增】服务基类（可选）
+│   │   ├── embedding.py
+│   │   ├── asr.py
+│   │   ├── reranker.py
+│   │   └── mineru.py
+│   │
+│   └── utils/
+│       ├── __init__.py
+│       ├── logging.py
+│       └── exceptions.py
 │
-├── scripts/                      # 【新增】辅助脚本
-│   ├── start_embedding.py        # 原 embedding_server.py 迁移
-│   ├── start_asr.py              # 原 asr_server.py 迁移
-│   ├── start_reranker.py         # 原 reranker_server.py 迁移
-│   └── mineru_server.sh          # 迁移（或改为 Python）
+├── scripts/                      # 【新增】辅助脚本（保持原有命名）
+│   ├── embedding_server.py       # 原 embedding_server.py 迁移
+│   ├── embedding_client.py       # 原 embedding_client.py 迁移
+│   ├── asr_server.py             # 原 asr_server.py 迁移
+│   ├── asr_client.py             # 原 asr_client.py 迁移
+│   ├── reranker_server.py        # 原 reranker_server.py 迁移
+│   ├── reranker_client.py        # 原 reranker_client.py 迁移
+│   ├── mineru_server.sh          # 原 mineru_server.sh 迁移
+│   ├── mineru_client.py          # 原 mineru_client.py 迁移
+│   └── service_manager.py        # 【新增】CLI 服务管理工具
 │
 ├── tests/                        # 【新增】测试目录
 │   ├── __init__.py
@@ -116,6 +120,18 @@ pi-llm-server/
 │
 └── .gitignore                    # 更新以排除构建产物
 ```
+
+### 2.2 为什么选择根目录布局而非 src/ 布局
+
+| 考量 | src/ 布局 | 根目录布局 | 本项目选择 |
+|------|----------|-----------|-----------|
+| 目录深度 | 较深 (`src/pi_llm_server/`) | 较浅 (`pi_llm_server/`) | ✅ 根目录 |
+| 导航便利 | 多一层 | 更直接 | ✅ 根目录 |
+| 测试安全性 | 强制使用安装的包 | 可能混用 | ⚠️ 但本地开发影响小 |
+| 项目类型 | 大型库 | 应用/中型项目 | ✅ 本项目是服务端应用 |
+| 改造成本 | 需移动现有包 | 保持现有结构 | ✅ 成本更低 |
+
+**结论**: 本项目是服务端应用而非分发的库，根目录布局更简洁实用。
 
 ---
 
@@ -211,9 +227,6 @@ pi-llm-embedding = "pi_llm_server.services.embedding:main"
 pi-llm-asr = "pi_llm_server.services.asr:main"
 pi-llm-reranker = "pi_llm_server.services.reranker:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
 [tool.setuptools.package-data]
 pi_llm_server = ["*.yaml", "*.yaml.example"]
 ```
@@ -227,7 +240,7 @@ pi_llm_server = ["*.yaml", "*.yaml.example"]
 
 ### 3.2 步骤 2: 重构主程序入口
 
-#### 2.1 创建 `src/pi_llm_server/__main__.py`
+#### 2.1 创建 `pi_llm_server/__main__.py`
 
 支持 `python -m pi_llm_server` 运行：
 
@@ -241,7 +254,7 @@ if __name__ == "__main__":
     main()
 ```
 
-#### 2.2 创建 `src/pi_llm_server/cli.py`
+#### 2.2 创建 `pi_llm_server/cli.py`
 
 命令行入口：
 
@@ -276,7 +289,7 @@ if __name__ == "__main__":
     main()
 ```
 
-#### 2.3 创建 `src/pi_llm_server/server.py`
+#### 2.3 创建 `pi_llm_server/server.py`
 
 FastAPI 应用定义（从原 `pi-llm-server.py` 迁移）：
 
@@ -308,29 +321,77 @@ app = FastAPI(
 
 ### 3.3 步骤 3: 迁移子服务脚本到 `scripts/`
 
-将独立的 server 脚本迁移并重构：
+**设计变更**：子服务脚本和客户端脚本都迁移到 `scripts/`，保持原有命名不变，新增 CLI 服务管理工具
 
 ```
 scripts/
-├── start_embedding.py    # 原 embedding_server.py
-├── start_asr.py          # 原 asr_server.py
-├── start_reranker.py     # 原 reranker_server.py
-└── mineru_server.sh      # 迁移
+├── embedding_server.py       # 原 embedding_server.py 迁移（名称不变）
+├── embedding_client.py       # 原 embedding_client.py 迁移（名称不变）
+├── asr_server.py             # 原 asr_server.py 迁移（名称不变）
+├── asr_client.py             # 原 asr_client.py 迁移（名称不变）
+├── reranker_server.py        # 原 reranker_server.py 迁移（名称不变）
+├── reranker_client.py        # 原 reranker_client.py 迁移（名称不变）
+├── mineru_server.sh          # 原 mineru_server.sh 迁移（名称不变）
+├── mineru_client.py          # 原 mineru_client.py 迁移（名称不变）
+├── service_manager.py        # 【新增】CLI 服务管理工具
+└── start_all_services.sh     # 可选：保留原 bash 脚本作为兼容
 ```
 
 **迁移方式**:
 
 1. 将原脚本复制到 `scripts/`
-2. 修改 import 路径（如果使用包内模块）
+2. 修改路径引用（如日志目录、数据目录需要调整为相对路径或绝对路径）
 3. 添加 shebang 并设置可执行权限
 
-**可选**: 将子服务也做成可安装包：
+#### 3.3.1 CLI 服务管理工具设计
 
-```toml
-[project.scripts]
-start-embedding = "pi_llm_server.scripts.start_embedding:main"
-start-asr = "pi_llm_server.scripts.start_asr:main"
+**文件**: `scripts/service_manager.py`
+
+**功能需求**:
+1. 服务启动：支持启动单个服务或所有服务
+2. 服务检查：通过健康检查端口检测服务是否运行
+3. 日志管理：自动将日志输出到 `logs/` 目录
+4. 进程管理：记录 PID，支持停止服务
+5. 状态显示：显示所有服务的运行状态
+
+**命令设计**:
+```bash
+# 启动所有子服务
+python scripts/service_manager.py start --all
+
+# 启动单个服务
+python scripts/service_manager.py start embedding
+python scripts/service_manager.py start asr
+
+# 启动子服务 + 统一网关
+python scripts/service_manager.py start --with-gateway
+
+# 停止所有服务
+python scripts/service_manager.py stop --all
+
+# 查看服务状态
+python scripts/service_manager.py status
+
+# 重启服务
+python scripts/service_manager.py restart embedding
 ```
+
+**服务配置**:
+```python
+SERVICE_CONFIG = {
+    'embedding': {'script': 'embedding_server.py', 'port': 8091},
+    'asr': {'script': 'asr_server.py', 'port': 8092},
+    'reranker': {'script': 'reranker_server.py', 'port': 8093},
+    'mineru': {'script': 'mineru_server.sh', 'port': 8094},
+    'gateway': {'script': '../pi-llm-server.py', 'port': 8090},
+}
+```
+
+**实现要点**:
+- 使用 `subprocess.Popen` 启动服务
+- PID 文件存储在 `.pids/` 目录
+- 健康检查：`curl http://127.0.0.1:{port}/health`
+- 日志文件：`logs/{service}.log`
 
 ---
 
@@ -474,11 +535,10 @@ from pi_llm_server import app
 
 ### 阶段 1: 基础结构
 - [ ] 创建 `pyproject.toml`
-- [ ] 移动 `pi_llm_server/` 到 `src/pi_llm_server/`
-- [ ] 创建 `src/pi_llm_server/__main__.py`
-- [ ] 创建 `src/pi_llm_server/cli.py`
-- [ ] 创建 `src/pi_llm_server/server.py`
-- [ ] 更新 `src/pi_llm_server/__init__.py` 导出 `__version__`
+- [ ] 创建 `pi_llm_server/__main__.py`
+- [ ] 创建 `pi_llm_server/cli.py`
+- [ ] 创建 `pi_llm_server/server.py`
+- [ ] 更新 `pi_llm_server/__init__.py` 导出 `__version__`
 
 ### 阶段 2: 子服务迁移
 - [ ] 创建 `scripts/` 目录
