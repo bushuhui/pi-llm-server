@@ -82,3 +82,9 @@ reranker 模型使用显存太多了，帮我写一个CPU版本的server
 
 
 参考 pi_llm_server/cli.py 里面如果 config.yaml 不存在的时候的处理方法，加入到 scripts/service_manager.py
+
+
+帮我新建一下 doc/requirements_pi_llm_server.txt ，整合 doc/requirements_vllm.txt 和 doc/requirements_mineru.txt， 统一到 vllm 环境
+
+
+你帮我调试一下 conda 的 pi-llm-server 这个环境是否还缺包。运行mineru服务的命令是： ./scripts/mineru_server.sh --python-path /home/tiger/anaconda3/envs/pi-llm-server/bin/python  测试PDF解析的命令是： python scripts/mineru_client.py data/InfoLOD.pdf results/InfoLOD.zip 运行的日志是 /home/bushuhui/.cache/pi-llm-server/logs/mineru.log 。需要运行了PDF解析的程序，mineru才开始运行，才能发现问题，可以通过log文件发现问题。你帮我把问题都解决完，把缺失的包写入到 doc/requirements_pi_llm_server.txt
