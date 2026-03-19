@@ -79,3 +79,6 @@ reranker 模型使用显存太多了，帮我写一个CPU版本的server
 
 
 配置文件 config.yaml 的示例在 examples/config.example.yaml ； 改进 scripts/mineru_server.sh 把里面写死的 Python路径，改成从命令行参数读取 ； 在 service_manager.py 中添加配置读取功能，启动 mineru, embedding 等服务启动程序、脚本的时候传递参数
+
+
+参考 pi_llm_server/cli.py 里面如果 config.yaml 不存在的时候的处理方法，加入到 scripts/service_manager.py

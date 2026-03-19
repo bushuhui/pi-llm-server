@@ -1,9 +1,10 @@
 
 ## TODO
 
-- [ ] 统一调整目录，把embedding等脚本挪到 backend 或者 scripts 目录；把 pi_llm_server 挪到 src 目录（或者其他目录）
-- [ ] 查一下pip安装的时候，如何把脚本等放到PATH能找到的目录
 - [ ] LLM service 测试
+
+- [x] 统一调整目录，把embedding等脚本挪到 backend 或者 scripts 目录；把 pi_llm_server 挪到 src 目录（或者其他目录）
+- [x] 查一下pip安装的时候，如何把脚本等放到PATH能找到的目录
 
 - [x] 统一设置端口号
 - [x] 统一设置API的URL访问地址，列出模型，状态，访问
@@ -135,30 +136,3 @@ python asr_client.py transcribe audio_s.mp3
 ```
 
 
-## LocalAI command
-
-```bash
-# localai client
-  # 1. 列出所有模型
-  python localai_client.py list
-
-  # 2. 按类别查看
-  python localai_client.py list -c whisper
-  python localai_client.py list -c llm
-
-  # 3. 语音转文字
-  python localai_client.py transcribe audio_s.mp3
-  python localai_client.py transcribe audio_s.mp3 -m whisper-base
-
-  # 4. 文本生成
-  python localai_client.py generate -m llama-3.2-1b-instruct -p "什么是人工智能？"
-
-  # 5. 图片生成
-  python localai_client.py image -p "一只在月光下奔跑的猫"
-
-  # 6. 文本嵌入
-  python localai_client.py embed -m text-embedding-ada-002 -t "今天天气很好"
-
-  # 7. 图片识别
-  python localai_client.py vision image.jpg -m claude-3-haiku
-```

@@ -9,7 +9,7 @@ User=pi-lab
 Group=pi-lab
 WorkingDirectory=/mnt/data0/home/bushuhui_data/msdk/pi-lab/0_ai_agent/pi-llm-server
 Environment="PATH=/home/tiger/anaconda3/envs/vllm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/home/tiger/anaconda3/envs/vllm/bin/python -m pi_llm_server --config /path/to/config.yaml
+ExecStart=/home/tiger/anaconda3/envs/vllm/bin/python -m pi_llm_server 
 Restart=always
 RestartSec=5
 StandardOutput=journal

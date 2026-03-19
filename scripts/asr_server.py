@@ -44,8 +44,7 @@ import uvicorn
 
 def setup_logging(service_name: str):
     """配置日志，输出到控制台和文件"""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    logs_dir = os.path.join(script_dir, "logs")
+    logs_dir = os.path.expanduser("~/.cache/pi-llm-server/logs")
     os.makedirs(logs_dir, exist_ok=True)
 
     log_file = os.path.join(logs_dir, f"{service_name}.log")
@@ -75,7 +74,7 @@ logger = setup_logging("asr_server")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(SCRIPT_DIR, "data")
 RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
-DEFAULT_MODEL_PATH = "/home/bushuhui/.cache/modelscope/hub/models/Qwen/Qwen3-ASR-1.7B"
+DEFAULT_MODEL_PATH = os.path.expanduser("~/.cache/modelscope/hub/models/Qwen/Qwen3-ASR-1.7B")
 
 # 全局模型实例和配置
 asr_model = None
@@ -272,7 +271,7 @@ def transcribe_audio(
             segments = [(0, len(audio_array), audio_array)]
 
         # 保存片段到临时目录
-        tmp_dir = os.path.join(SCRIPT_DIR, ".asr_tmp")
+        tmp_dir = os.path.expanduser("~/.cache/pi-llm-server/tmp")
         os.makedirs(tmp_dir, exist_ok=True)
 
         chunk_paths = []

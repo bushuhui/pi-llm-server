@@ -21,8 +21,6 @@ PID_FILE="${PID_DIR}/mineru.pid"
 # 默认配置
 HOST="0.0.0.0"
 PORT="8094"
-VRAM="9000"
-MODEL_SOURCE="${MINERU_MODEL_SOURCE:-modelscope}"
 PYTHON_PATH=""
 
 # 解析命令行参数
@@ -37,10 +35,12 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --vram)
+            # VRAM 保存为变量，稍后转换为 GB 并设置到 MINERU_VIRTUAL_VRAM_SIZE
             VRAM="$2"
             shift 2
             ;;
         --model-source)
+            # 模型源通过环境变量传递
             MODEL_SOURCE="$2"
             shift 2
             ;;
@@ -63,15 +63,15 @@ done
 # 默认 action 为 start
 ACTION="${ACTION:-start}"
 
-# 检查 Python 路径是否提供
-if [ -z "$PYTHON_PATH" ]; then
+# 检查 Python 路径是否提供（仅 start/restart 需要）
+if [ "$ACTION" != "stop" ] && [ -z "$PYTHON_PATH" ]; then
     echo "错误：必须指定 --python-path 参数"
     echo "示例：$0 start --python-path /home/tiger/anaconda3/envs/mineru/bin/python"
     exit 1
 fi
 
-# 检查 Python 解释器是否存在
-if [ ! -x "$PYTHON_PATH" ]; then
+# 检查 Python 解释器是否存在（仅 start/restart 需要）
+if [ "$ACTION" != "stop" ] && [ ! -x "$PYTHON_PATH" ]; then
     echo "错误：Python 解释器不存在或不可执行：$PYTHON_PATH"
     exit 1
 fi
@@ -85,16 +85,23 @@ start_server() {
         fi
     fi
 
+    # 设置 VRAM 和 MODEL_SOURCE 默认值（如果未提供）
+    VRAM="${VRAM:-9000}"
+    MODEL_SOURCE="${MODEL_SOURCE:-modelscope}"
+
     echo "$(date '+%Y-%m-%d %H:%M:%S') 启动 MinerU API 服务..."
     echo "$(date '+%Y-%m-%d %H:%M:%S') Host: $HOST, Port: $PORT, VRAM: ${VRAM}MB, 模型源：$MODEL_SOURCE"
     echo "$(date '+%Y-%m-%d %H:%M:%S') Python: $PYTHON_PATH"
 
-    # 后台启动，设置模型源环境变量
-    MINERU_MODEL_SOURCE="$MODEL_SOURCE" \
-    nohup "$PYTHON_PATH" -m mineru.server \
+    # 后台启动，设置模型源和 VRAM 环境变量
+    # 使用 mineru-api 命令启动（等价于 python -m mineru.cli.fast_api）
+    # VRAM 通过环境变量 MINERU_VIRTUAL_VRAM_SIZE 传递（单位：GB）
+    # 模型源通过环境变量 MINERU_MODEL_SOURCE 传递（huggingface/modelscope/local）
+    export MINERU_MODEL_SOURCE="$MODEL_SOURCE"
+    export MINERU_VIRTUAL_VRAM_SIZE="$(( VRAM / 1024 ))"
+    nohup "$PYTHON_PATH" -m mineru.cli.fast_api \
         --host "$HOST" \
         --port "$PORT" \
-        --vram "$VRAM" \
         >> "$LOG_FILE" 2>&1 &
 
     echo $! > "$PID_FILE"

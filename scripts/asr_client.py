@@ -39,8 +39,7 @@ from typing import List
 
 def setup_logging(service_name: str):
     """配置日志，输出到控制台和文件"""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    logs_dir = os.path.join(script_dir, "logs")
+    logs_dir = os.path.expanduser("~/.cache/pi-llm-server/logs")
     os.makedirs(logs_dir, exist_ok=True)
 
     log_file = os.path.join(logs_dir, f"{service_name}.log")
@@ -70,8 +69,7 @@ logger = setup_logging("asr_client")
 
 DEFAULT_BASE_URL = "http://localhost:8092"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(SCRIPT_DIR, "data")
-RESULTS_DIR = os.path.join(SCRIPT_DIR, "results")
+RESULTS_DIR = os.path.expanduser("~/.cache/pi-llm-server/results")
 
 
 def check_server_health(base_url: str) -> bool:
@@ -122,9 +120,10 @@ def transcribe_audio(
     logger.info("Qwen3-ASR 语音转写")
     logger.info("=" * 60)
 
-    # 解析文件路径
+    # 解析文件路径（支持相对路径和绝对路径）
     if not os.path.isabs(audio_file):
-        audio_file = os.path.join(DATA_DIR, audio_file)
+        # 相对路径，直接使用
+        audio_file = os.path.abspath(audio_file)
 
     if not os.path.exists(audio_file):
         logger.error(f"音频文件不存在：{audio_file}")

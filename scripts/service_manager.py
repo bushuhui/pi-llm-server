@@ -31,12 +31,17 @@ import signal
 import time
 import subprocess
 import yaml
+import shutil
 from pathlib import Path
 from typing import Dict, Optional, Any
 
-# 默认配置文件路径
+# 默认配置目录和文件
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "pi-llm-server"
 DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.yaml"
+
+# 项目根目录（用于查找示例配置文件）
+PROJECT_ROOT = Path(__file__).parent.parent
+EXAMPLE_CONFIG_FILE = PROJECT_ROOT / "examples" / "config.example.yaml"
 
 # 服务配置（默认值，可从配置文件覆盖）
 SERVICE_CONFIG = {
@@ -76,10 +81,30 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 PID_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def load_config() -> Dict[str, Any]:
-    """加载配置文件"""
+def ensure_config_exists() -> Path:
+    """确保配置文件存在，不存在则自动创建"""
+    if not DEFAULT_CONFIG_DIR.exists():
+        DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        print(f"创建配置目录：{DEFAULT_CONFIG_DIR}")
+
     if not DEFAULT_CONFIG_FILE.exists():
-        return {}
+        # 从项目目录复制示例配置
+        if EXAMPLE_CONFIG_FILE.exists():
+            shutil.copy2(str(EXAMPLE_CONFIG_FILE), str(DEFAULT_CONFIG_FILE))
+            print(f"创建默认配置文件：{DEFAULT_CONFIG_FILE}")
+            print("请修改配置文件后重新启动")
+            print(f"配置文件位置：{DEFAULT_CONFIG_FILE}")
+        else:
+            print(f"错误：找不到示例配置文件 {EXAMPLE_CONFIG_FILE}")
+            print("请手动创建配置文件或检查项目结构")
+            sys.exit(1)
+
+    return DEFAULT_CONFIG_FILE
+
+
+def load_config() -> Dict[str, Any]:
+    """加载配置文件，如果不存在则自动创建"""
+    ensure_config_exists()
 
     try:
         with open(DEFAULT_CONFIG_FILE, 'r', encoding='utf-8') as f:
@@ -205,6 +230,8 @@ def start_service(service_name: str, background: bool = True, config: Dict[str, 
     try:
         if service_name == 'gateway':
             # 网关使用 python -m pi_llm_server 启动，传递配置文件路径
+            # 确保配置文件存在
+            ensure_config_exists()
             cmd = [sys.executable, '-m', 'pi_llm_server', '--config', str(DEFAULT_CONFIG_FILE)]
 
         elif service_config['script'].endswith('.sh'):
@@ -371,7 +398,8 @@ def show_status():
     # 显示目录信息
     print(f"日志目录：{get_log_dir()}")
     print(f"PID 目录：{get_pid_dir()}")
-    print(f"配置文件：{DEFAULT_CONFIG_FILE}")
+    config_path = ensure_config_exists()
+    print(f"配置文件：{config_path}")
 
 
 def start_all(with_gateway: bool = False):

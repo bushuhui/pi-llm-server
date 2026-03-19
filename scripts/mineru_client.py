@@ -22,8 +22,7 @@ from datetime import datetime
 # 配置日志
 def setup_logging(service_name: str):
     """配置日志，输出到控制台和文件"""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    logs_dir = os.path.join(script_dir, "logs")
+    logs_dir = os.path.expanduser("~/.cache/pi-llm-server/logs")
     os.makedirs(logs_dir, exist_ok=True)
 
     log_file = os.path.join(logs_dir, f"{service_name}.log")
