@@ -112,13 +112,34 @@ pi-llm-server/
 │   ├── basic_usage.py
 │   └── config.yaml.example
 │
-├── data/                         # 测试数据（保留）
+├── data/                         # 测试数据（保留，加入 .gitignore）
 │   └── ...
 │
 ├── doc/                          # 文档（保留）
 │   └── ...
 │
 └── .gitignore                    # 更新以排除构建产物
+```
+
+### 2.1.1 系统目录结构（运行时）
+
+```
+/var/log/pi-llm-server/           # 日志目录（需要 root 权限创建）
+├── embedding.log
+├── asr.log
+├── reranker.log
+├── mineru.log
+└── pi-llm-server.log
+
+/run/pi-llm-server/               # PID 文件目录（需要 root 权限创建）
+├── embedding.pid
+├── asr.pid
+├── reranker.pid
+├── mineru.pid
+└── pi-llm-server.pid
+
+~/.config/pi-llm-server/          # 用户配置目录（首次运行自动创建）
+└── config.yaml                   # 用户配置文件
 ```
 
 ### 2.2 为什么选择根目录布局而非 src/ 布局
@@ -153,7 +174,7 @@ description = "统一 LLM 服务网关 - 集成 Embedding、ASR、Reranker、Min
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "PI-Lab Team", email = "your-email@example.com"}
+    {name = "PI-Lab Team", email = "bushuhui@foxmail.com"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -166,6 +187,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 requires-python = ">=3.8"
 dependencies = [
@@ -215,10 +237,10 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-org/pi-llm-server"
+Homepage = "https://github.com/bushuhui/pi-llm-server"
 Documentation = "https://pi-llm-server.readthedocs.io"
-Repository = "https://github.com/your-org/pi-llm-server"
-Changelog = "https://github.com/your-org/pi-llm-server/blob/main/CHANGELOG.md"
+Repository = "https://github.com/bushuhui/pi-llm-server"
+Changelog = "https://github.com/bushuhui/pi-llm-server/blob/main/CHANGELOG.md"
 
 [project.scripts]
 # 命令行入口点
@@ -226,6 +248,7 @@ pi-llm-server = "pi_llm_server.cli:main"
 pi-llm-embedding = "pi_llm_server.services.embedding:main"
 pi-llm-asr = "pi_llm_server.services.asr:main"
 pi-llm-reranker = "pi_llm_server.services.reranker:main"
+pi-llm-mineru = "pi_llm_server.services.mineru:main"
 
 [tool.setuptools.package-data]
 pi_llm_server = ["*.yaml", "*.yaml.example"]
@@ -233,7 +256,6 @@ pi_llm_server = ["*.yaml", "*.yaml.example"]
 
 **关键说明**:
 - `[project.scripts]`: 定义 pip 安装后可用的命令
-- `where = ["src"]`: 指定包在 `src/` 目录下
 - `[project.optional-dependencies]`: 允许用户按需安装依赖
 
 ---
@@ -271,7 +293,7 @@ import uvicorn
 
 def main():
     parser = argparse.ArgumentParser(description="PI-LLM Server - 统一 LLM 服务网关")
-    parser.add_argument("--config", "-c", default="config.yaml", help="配置文件路径")
+    parser.add_argument("--config", "-c", default=None, help="配置文件路径（默认：~/.config/pi-llm-server/config.yaml）")
     parser.add_argument("--host", default=None, help="服务主机地址")
     parser.add_argument("--port", "-p", type=int, default=None, help="服务端口")
     parser.add_argument("--log-level", default=None, choices=["debug", "info", "warning", "error"])
@@ -350,8 +372,8 @@ scripts/
 **功能需求**:
 1. 服务启动：支持启动单个服务或所有服务
 2. 服务检查：通过健康检查端口检测服务是否运行
-3. 日志管理：自动将日志输出到 `logs/` 目录
-4. 进程管理：记录 PID，支持停止服务
+3. 日志管理：使用 Linux 标准日志目录 `/var/log/pi-llm-server/`
+4. 进程管理：使用 Linux 标准 PID 目录 `/run/pi-llm-server/`
 5. 状态显示：显示所有服务的运行状态
 
 **命令设计**:
@@ -389,9 +411,51 @@ SERVICE_CONFIG = {
 
 **实现要点**:
 - 使用 `subprocess.Popen` 启动服务
-- PID 文件存储在 `.pids/` 目录
+- PID 文件：`/run/pi-llm-server/{service}.pid`（遵循 Linux 标准）
 - 健康检查：`curl http://127.0.0.1:{port}/health`
-- 日志文件：`logs/{service}.log`
+- 日志文件：`/var/log/pi-llm-server/{service}.log`（遵循 Linux 标准）
+
+---
+
+#### 3.3.2 配置文件管理
+
+**配置目录**: `~/.config/pi-llm-server/`
+
+**配置文件**: `~/.config/pi-llm-server/config.yaml`
+
+**初始化逻辑**:
+1. 程序启动时检查配置目录是否存在
+2. 如果不存在，自动创建 `~/.config/pi-llm-server/`
+3. 将项目中的 `config.example.yaml` 复制到配置目录作为初始配置
+4. 提示用户修改配置文件
+
+**实现示例**:
+```python
+import os
+import shutil
+from pathlib import Path
+
+DEFAULT_CONFIG_DIR = Path.home() / ".config" / "pi-llm-server"
+DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.yaml"
+
+def init_config():
+    """初始化配置文件"""
+    if not DEFAULT_CONFIG_DIR.exists():
+        DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        print(f"创建配置目录：{DEFAULT_CONFIG_DIR}")
+
+    if not DEFAULT_CONFIG_FILE.exists():
+        # 从项目目录复制示例配置
+        script_dir = Path(__file__).parent
+        example_config = script_dir.parent / "config.example.yaml"
+        if example_config.exists():
+            shutil.copy2(example_config, DEFAULT_CONFIG_FILE)
+            print(f"创建默认配置文件：{DEFAULT_CONFIG_FILE}")
+            print("请修改配置文件后重新启动")
+            sys.exit(1)
+
+    return load_config(DEFAULT_CONFIG_FILE)
+```
 
 ---
 
@@ -424,7 +488,7 @@ def test_token_validation():
 | **移除** | `backup/` | 移入 git 归档分支或删除 |
 | **清理** | `__pycache__/` | 加入 `.gitignore` |
 | **归档** | `results/` | 移出主目录或加入 `.gitignore` |
-| **归档** | `logs/` | 加入 `.gitignore` |
+| **废弃** | `logs/` | 日志改用系统目录 `/var/log/pi-llm-server/`，本地 `logs/` 目录移除或加入 `.gitignore` |
 | **归档** | `data/` | 加入 `.gitignore`（测试数据保留） |
 | **归档** | `output/` | 加入 `.gitignore` |
 
@@ -465,7 +529,7 @@ ENV/
 *.swp
 *.swo
 
-# Logs
+# Logs (项目本地 logs/ 已废弃，日志使用系统目录 /var/log/pi-llm-server/)
 logs/
 *.log
 
@@ -510,7 +574,7 @@ pip install -e ".[embedding]"
 pip install pi-llm-server
 
 # 或从 GitHub 安装
-pip install git+https://github.com/your-org/pi-llm-server.git
+pip install git+https://github.com/bushuhui/pi-llm-server.git
 
 # 或从源码安装
 pip install .
@@ -520,10 +584,10 @@ pip install .
 
 ```bash
 # 方式 1: 使用命令行入口（推荐）
-pi-llm-server --config config.yaml
+pi-llm-server
 
 # 方式 2: 使用 python -m
-python -m pi_llm_server --config config.yaml
+python -m pi_llm_server
 
 # 方式 3: 直接导入
 from pi_llm_server import app
@@ -542,10 +606,15 @@ from pi_llm_server import app
 
 ### 阶段 2: 子服务迁移
 - [ ] 创建 `scripts/` 目录
-- [ ] 迁移 `embedding_server.py` → `scripts/start_embedding.py`
-- [ ] 迁移 `asr_server.py` → `scripts/start_asr.py`
-- [ ] 迁移 `reranker_server.py` → `scripts/start_reranker.py`
+- [ ] 迁移 `embedding_server.py` → `scripts/embedding_server.py`
+- [ ] 迁移 `embedding_client.py` → `scripts/embedding_client.py`
+- [ ] 迁移 `asr_server.py` → `scripts/asr_server.py`
+- [ ] 迁移 `asr_client.py` → `scripts/asr_client.py`
+- [ ] 迁移 `reranker_server.py` → `scripts/reranker_server.py`
+- [ ] 迁移 `reranker_client.py` → `scripts/reranker_client.py`
 - [ ] 迁移 `mineru_server.sh` → `scripts/mineru_server.sh`
+- [ ] 迁移 `mineru_client.py` → `scripts/mineru_client.py`
+- [ ] 创建 `scripts/service_manager.py` CLI 工具
 
 ### 阶段 3: 测试和文档
 - [ ] 创建 `tests/` 目录和基础测试
@@ -557,7 +626,13 @@ from pi_llm_server import app
 - [ ] 更新 `.gitignore`
 - [ ] 归档 `backup/` 目录
 - [ ] 清理 `__pycache__/`
-- [ ] 归档 `results/`、`logs/`
+- [ ] 归档 `results/`、`data/`（测试数据）
+- [ ] 移除项目本地 `logs/` 目录（日志改用系统目录 `/var/log/pi-llm-server/`）
+
+### 阶段 4.5: 系统目录配置（需要 root 权限）
+- [ ] 创建系统日志目录 `/var/log/pi-llm-server/`
+- [ ] 创建系统 PID 目录 `/run/pi-llm-server/`
+- [ ] 设置适当的权限（允许非 root 用户写入）
 
 ### 阶段 5: 验证
 - [ ] 测试 `pip install -e .`
@@ -572,7 +647,7 @@ from pi_llm_server import app
 ### 6.1 版本管理
 
 - 使用语义化版本 (SemVer): `主版本。次版本.修订版本`
-- 在 `src/pi_llm_server/__init__.py` 中定义 `__version__`
+- 在 `pi_llm_server/__init__.py` 中定义 `__version__`
 - 使用 `CHANGELOG.md` 跟踪变更
 
 ### 6.2 持续集成
@@ -631,8 +706,10 @@ mkdocs new docs-site
 |------|------|----------|
 | **路径变更** | 配置文件、日志路径需更新 | 在文档中明确说明 |
 | **导入路径** | 原有 `from pi_llm_server` 需调整 | 保持包内导入不变 |
-| **客户端脚本** | `embedding_client.py` 等不受影响 | 保留在根目录或迁移到 `examples/` |
+| **客户端脚本** | `embedding_client.py` 等需迁移到 `scripts/` | 更新文档说明新位置 |
 | **MinerU 依赖** | 需单独 conda 环境 | 在文档中说明 |
+| **系统目录权限** | `/var/log/pi-llm-server/` 和 `/run/pi-llm-server/` 需要 root 权限创建 | 提供安装脚本自动创建，或使用用户目录作为备选 |
+| **配置初始化** | 首次运行时需自动创建配置 | 程序启动时检测并初始化 |
 
 ---
 

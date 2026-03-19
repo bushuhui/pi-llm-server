@@ -2,7 +2,7 @@
 
 ## 2026-03-13
 
-我在本机部署了一个LocalAI的大模型服务，端口是8080，你帮我在 0_machine_learning_AI/LLM_API/LocalAI 目录里写一个Python程序，测试查询已有的模型，调用里面的 whisper-small 模型，实现语音转文字，示例音频文件可以使用 audio_s.mp3 ，把识别后的文字保存到程序相同的目录。
+我在本机部署了一个LocalAI的大模型服务，端口是8080，你帮我在 这个项目 目录里写一个Python程序，测试查询已有的模型，调用里面的 whisper-small 模型，实现语音转文字，示例音频文件可以使用 audio_s.mp3 ，把识别后的文字保存到程序相同的目录。
 
 
 
@@ -17,17 +17,17 @@ reranker 模型使用显存太多了，帮我写一个CPU版本的server
 
 ## 2026-03-15
 
-帮我把 0_machine_learning_AI/LLM_API/LocalAI 里面的embedding， reranker， asr， mineru的默认端口改成 8091， 8092， 8093， 8094 。同时修改README.md 里面的说明
+帮我把 这个项目 里面的embedding， reranker， asr， mineru的默认端口改成 8091， 8092， 8093， 8094 。同时修改README.md 里面的说明
 
 
-帮我改进 0_machine_learning_AI/LLM_API/LocalAI 里面的embedding， reranker， asr， mineru 里面的服务器端、客户端程序，使用日志，日志文件保存到程序所在目录的 logs 目录，日志文件加上服务器类型的前缀
+帮我改进 这个项目 里面的embedding， reranker， asr， mineru 里面的服务器端、客户端程序，使用日志，日志文件保存到程序所在目录的 logs 目录，日志文件加上服务器类型的前缀
 
 
-帮我把 0_machine_learning_AI/LLM_API/LocalAI/mineru_api_start.sh 改名成 mineru_server.sh ，README.md 等文档和相关的程序也同样修改
+帮我把 这个项目 mineru_api_start.sh 改名成 mineru_server.sh ，README.md 等文档和相关的程序也同样修改
 
-帮我把 0_machine_learning_AI/LLM_API/LocalAI/mineru_api_call.py 该名成 mineru_client.py , README.md 等文档和相关的程序也同样修改
+帮我把 这个项目 mineru_api_call.py 该名成 mineru_client.py , README.md 等文档和相关的程序也同样修改
 
-帮我改进 0_machine_learning_AI/LLM_API/LocalAI 里面的embedding， reranker， asr， mineru 里面的服务器端、客户端程序里面的日志，检查一下日志是不是在终端、日志文件都有输出；把多余、重复的print等打印删除
+帮我改进 这个项目 里面的embedding， reranker， asr， mineru 里面的服务器端、客户端程序里面的日志，检查一下日志是不是在终端、日志文件都有输出；把多余、重复的print等打印删除
 
 
 ## 2026-03-16
@@ -53,3 +53,17 @@ reranker 模型使用显存太多了，帮我写一个CPU版本的server
 
 在 doc/PYTHON_PACKAGE_REFACTOR_PLAN.md 设计文档里面， 把 pi_llm_server 放在 src目录下，是不是目录太深了，把 pi_llm_server 直接放在项目根目录如何。先不写代码，只是把设计方案改进好
 
+在设计文档 doc/PYTHON_PACKAGE_REFACTOR_PLAN.md 中， scripts目录里面的子服务启动的脚步，后续计划写一个Python程序自动启动，这部分的程序、脚本，是不是放在 pi_llm_server/backends 里面更好？先不写代码等，先把方案设计弄好
+
+
+采用方案A，那么如何写一个 cli 的工具能够将多个子服务启动起来；另外, script 目录里面的程序、脚本的名字保持目前已有的名字不变，例如还是 embedding_server.py embedding_client.py
+
+
+这个项目的目录与结构设计文档 doc/PYTHON_PACKAGE_REFACTOR_PLAN.md 需要改进一下：
+1. `.pids` 文件夹使用Linux的存储pid文件的方式
+2. `logs` 文件夹使用Linux默认的Log记录方式，存储在 /var/log
+3. 项目的配置文件放到 ~/.config/pi-llm-server/config.yml ， 程序运行的如果配置目录不存在，则新建，并将config.yaml.example 拷贝到 ~/.config/pi-llm-server/config.yml 作为初始的配置。然后提醒修改这个文件
+先写程序，把设计文档修改好
+
+
+我修改了这个项目的目录与结构设计文档 doc/PYTHON_PACKAGE_REFACTOR_PLAN.md ， 你再仔细检查一下，是否有错误、前后不一致的地方，如果有修改一下
