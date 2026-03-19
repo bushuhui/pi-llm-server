@@ -350,9 +350,9 @@ LocalAI/
 │       ├── __init__.py
 │       ├── logging.py
 │       └── exceptions.py
-├── config.yaml               # 配置文件
-├── config.example.yaml       # 配置示例
 ├── logs/                     # 日志目录
+├── examples/                 # 示例目录
+│   └── config.example.yaml   # 配置示例
 └── pi-llm-server.service     # systemd 服务配置（可选）
 ```
 

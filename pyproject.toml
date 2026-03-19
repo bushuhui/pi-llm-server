@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pi-llm-server"
+version = "1.0.0"
+description = "统一 LLM 服务网关 - 集成 Embedding、ASR、Reranker、MinerU 服务"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "PI-Lab Team", email = "bushuhui@foxmail.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "httpx>=0.24.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0.0",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+# Embedding 服务依赖
+embedding = [
+    "sentence-transformers>=2.2.0",
+    "torch>=2.0.0",
+]
+# Reranker 服务依赖
+reranker = [
+    "transformers>=4.30.0",
+    "torch>=2.0.0",
+]
+# ASR 服务依赖
+asr = [
+    "silero-vad>=0.4.0",
+    "onnxruntime>=1.15.0",
+    "soundfile>=0.12.0",
+    "librosa>=0.10.0",
+]
+# MinerU 服务依赖（通常单独 conda 环境）
+mineru = [
+    # MinerU 需手动安装
+]
+# 开发依赖
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+# 全部依赖
+all = [
+    "pi-llm-server[embedding,reranker,asr,dev]",
+]
+
+[project.urls]
+Homepage = "https://github.com/bushuhui/pi-llm-server"
+Documentation = "https://pi-llm-server.readthedocs.io"
+Repository = "https://github.com/bushuhui/pi-llm-server"
+Changelog = "https://github.com/bushuhui/pi-llm-server/blob/main/CHANGELOG.md"
+
+[project.scripts]
+# 命令行入口点
+pi-llm-server = "pi_llm_server.cli:main"
+
+[tool.setuptools.package-data]
+pi_llm_server = ["*.yaml", "*.yaml.example"]
+
+[tool.setuptools.packages.find]
+include = ["pi_llm_server*"]

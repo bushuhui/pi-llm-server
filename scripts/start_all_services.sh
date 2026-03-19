@@ -5,7 +5,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOGS_DIR="${SCRIPT_DIR}/logs"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+LOGS_DIR="${PROJECT_DIR}/logs"
 
 # 创建日志目录
 mkdir -p "$LOGS_DIR"
@@ -111,11 +112,12 @@ echo "----------------------------------------"
 echo "启动 PI-LLM Unified Server..."
 echo "----------------------------------------"
 
-# 检查统一服务是否已运行
+# 启动统一服务
 if curl -s "http://127.0.0.1:8090/health" > /dev/null 2>&1; then
     echo "✓ PI-LLM Server 已在运行"
 else
-    python "$SCRIPT_DIR/pi-llm-server.py" > "$LOGS_DIR/pi-llm-server.log" 2>&1 &
+    cd "$PROJECT_DIR"
+    python -m pi_llm_server > "$LOGS_DIR/pi-llm-server.log" 2>&1 &
     sleep 5
     if curl -s "http://127.0.0.1:8090/health" > /dev/null 2>&1; then
         echo "✓ PI-LLM Server 启动成功"

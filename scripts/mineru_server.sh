@@ -4,11 +4,12 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 配置日志目录
-LOGS_DIR="${SCRIPT_DIR}/logs"
-mkdir -p "$LOGS_DIR"
+# 配置日志和 PID 目录（使用用户目录）
+LOGS_DIR="${HOME}/.cache/pi-llm-server/logs"
+PID_DIR="${HOME}/.cache/pi-llm-server/pids"
+mkdir -p "$LOGS_DIR" "$PID_DIR"
 LOG_FILE="${LOGS_DIR}/mineru.log"
-PID_FILE="${LOGS_DIR}/mineru_server.pid"
+PID_FILE="${PID_DIR}/mineru.pid"
 
 # 配置参数
 HOST="0.0.0.0"

@@ -1,5 +1,5 @@
 # PI-LLM-Server 配置文件示例
-# 复制此文件为 config.yaml 并根据实际情况修改
+# 复制此文件为 ~/.config/pi-llm-server/config.yaml 并根据实际情况修改
 
 # 服务基础配置
 server:
@@ -54,10 +54,10 @@ services:
     max_retries: 3
     models:
       - id: "unsloth/Qwen3-Embedding-0.6B"
-        path: "/home/bushuhui/.cache/modelscope/hub/models/unsloth/Qwen3-Embedding-0.6B"
+        path: "/path/to/Qwen3-Embedding-0.6B"
         device: "cpu"
         launch_script: "python embedding_server.py --model-path {path} --device {device}"
-        python_path: "/home/tiger/anaconda3/envs/vllm/bin/python"
+        python_path: "/path/to/python"
 
   asr:
     enabled: true
@@ -66,11 +66,11 @@ services:
     max_retries: 2
     models:
       - id: "Qwen/Qwen3-ASR-1.7B"
-        path: "/home/bushuhui/.cache/modelscope/hub/models/Qwen/Qwen3-ASR-1.7B"
+        path: "/path/to/Qwen3-ASR-1.7B"
         gpu_memory_utilization: 0.9
         max_model_len: 32768
         launch_script: "python asr_server.py --model-path {path} --gpu-memory-utilization {gpu_memory_utilization}"
-        python_path: "/home/tiger/anaconda3/envs/vllm/bin/python"
+        python_path: "/path/to/python"
 
   reranker:
     enabled: true
@@ -79,10 +79,10 @@ services:
     max_retries: 3
     models:
       - id: "Qwen/Qwen3-Reranker-0.6B"
-        path: "/home/bushuhui/.cache/modelscope/hub/models/Qwen/Qwen3-Reranker-0.6B"
+        path: "/path/to/Qwen3-Reranker-0.6B"
         device: "cpu"
         launch_script: "python reranker_server.py --model-path {path} --device {device}"
-        python_path: "/home/tiger/anaconda3/envs/vllm/bin/python"
+        python_path: "/path/to/python"
 
   mineru:
     enabled: true
@@ -91,7 +91,7 @@ services:
     max_retries: 1
     launch_script: "./mineru_server.sh start"
     working_directory: ""
-    python_path: "/home/tiger/anaconda3/envs/mineru/bin/python"
+    python_path: "/path/to/python"
     # 传递到 MinerU 的参数
     config:
       vram: "9000"

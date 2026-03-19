@@ -1,11 +1,86 @@
-__pycache__
-embedding_*.txt
-embedding_test_*.json
-asr_transcription_*.txt
-reranker_ranked_*.json
-.mineru_api.log
-.mineru_api.pid
-results
-output
-logs
-.asr_tmp
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+*.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs (项目本地 logs/ 已废弃，日志使用用户目录 ~/.cache/pi-llm-server/logs/)
+logs/
+*.log
+
+# Results and output
+results/
+output/
+.asr_tmp/
+
+# Test data (keep example files)
+*.mp3
+*.wav
+*.pdf
+!doc/
+
+# Config files (keep example)
+config.yaml
+!examples/config.example.yaml
+**/config.yaml
+
+# Coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# PyPI upload
+pypi/
+PYPI/
+
+# Test artifacts
+tests/data/*.tmp
+tests/output/

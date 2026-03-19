@@ -31,8 +31,6 @@ pi-llm-server/
 ├── reranker_client.py
 ├── mineru_client.py
 ├── mineru_server.sh
-├── config.yaml
-├── config.example.yaml
 ├── requirements.txt
 ├── README.md
 ├── backup/                       # 备份文件（应移除或归档）
@@ -110,7 +108,7 @@ pi-llm-server/
 │
 ├── examples/                     # 【新增】使用示例
 │   ├── basic_usage.py
-│   └── config.yaml.example
+│   └── config.example.yaml
 │
 ├── data/                         # 测试数据（保留，加入 .gitignore）
 │   └── ...
@@ -121,25 +119,25 @@ pi-llm-server/
 └── .gitignore                    # 更新以排除构建产物
 ```
 
-### 2.1.1 系统目录结构（运行时）
+### 2.1.1 用户目录结构（运行时）
 
 ```
-/var/log/pi-llm-server/           # 日志目录（需要 root 权限创建）
+~/.cache/pi-llm-server/logs/        # 日志目录（用户可写，无需 root 权限）
 ├── embedding.log
 ├── asr.log
 ├── reranker.log
 ├── mineru.log
 └── pi-llm-server.log
 
-/run/pi-llm-server/               # PID 文件目录（需要 root 权限创建）
+~/.cache/pi-llm-server/pids/        # PID 文件目录（用户可写，无需 root 权限）
 ├── embedding.pid
 ├── asr.pid
 ├── reranker.pid
 ├── mineru.pid
 └── pi-llm-server.pid
 
-~/.config/pi-llm-server/          # 用户配置目录（首次运行自动创建）
-└── config.yaml                   # 用户配置文件
+~/.config/pi-llm-server/            # 用户配置目录（首次运行自动创建）
+└── config.yaml                     # 用户配置文件
 ```
 
 ### 2.2 为什么选择根目录布局而非 src/ 布局
@@ -372,8 +370,8 @@ scripts/
 **功能需求**:
 1. 服务启动：支持启动单个服务或所有服务
 2. 服务检查：通过健康检查端口检测服务是否运行
-3. 日志管理：使用 Linux 标准日志目录 `/var/log/pi-llm-server/`
-4. 进程管理：使用 Linux 标准 PID 目录 `/run/pi-llm-server/`
+3. 日志管理：使用用户目录 `~/.cache/pi-llm-server/logs/`
+4. 进程管理：使用用户目录 `~/.cache/pi-llm-server/pids/`
 5. 状态显示：显示所有服务的运行状态
 
 **命令设计**:
@@ -411,9 +409,9 @@ SERVICE_CONFIG = {
 
 **实现要点**:
 - 使用 `subprocess.Popen` 启动服务
-- PID 文件：`/run/pi-llm-server/{service}.pid`（遵循 Linux 标准）
+- PID 文件：`~/.cache/pi-llm-server/pids/{service}.pid`（用户目录，无需 root 权限）
 - 健康检查：`curl http://127.0.0.1:{port}/health`
-- 日志文件：`/var/log/pi-llm-server/{service}.log`（遵循 Linux 标准）
+- 日志文件：`~/.cache/pi-llm-server/logs/{service}.log`（用户目录，无需 root 权限）
 
 ---
 
@@ -426,7 +424,7 @@ SERVICE_CONFIG = {
 **初始化逻辑**:
 1. 程序启动时检查配置目录是否存在
 2. 如果不存在，自动创建 `~/.config/pi-llm-server/`
-3. 将项目中的 `config.example.yaml` 复制到配置目录作为初始配置
+3. 将项目中的 `examples/config.example.yaml` 复制到配置目录作为初始配置
 4. 提示用户修改配置文件
 
 **实现示例**:
@@ -447,7 +445,7 @@ def init_config():
     if not DEFAULT_CONFIG_FILE.exists():
         # 从项目目录复制示例配置
         script_dir = Path(__file__).parent
-        example_config = script_dir.parent / "config.example.yaml"
+        example_config = script_dir.parent.parent / "examples" / "config.example.yaml"
         if example_config.exists():
             shutil.copy2(example_config, DEFAULT_CONFIG_FILE)
             print(f"创建默认配置文件：{DEFAULT_CONFIG_FILE}")
@@ -470,12 +468,12 @@ from pi_llm_server.config import ConfigManager
 
 def test_config_load():
     """测试配置文件加载"""
-    config = ConfigManager("config.example.yaml")
+    config = ConfigManager("examples/config.example.yaml")
     assert config.server.port == 8090
 
 def test_token_validation():
     """测试 Token 验证"""
-    config = ConfigManager("config.example.yaml")
+    config = ConfigManager("examples/config.example.yaml")
     assert config.validate_token("sk-admin-token-001", "/v1/embeddings")
 ```
 
@@ -488,7 +486,7 @@ def test_token_validation():
 | **移除** | `backup/` | 移入 git 归档分支或删除 |
 | **清理** | `__pycache__/` | 加入 `.gitignore` |
 | **归档** | `results/` | 移出主目录或加入 `.gitignore` |
-| **废弃** | `logs/` | 日志改用系统目录 `/var/log/pi-llm-server/`，本地 `logs/` 目录移除或加入 `.gitignore` |
+| **废弃** | `logs/` | 日志改用用户目录 `~/.cache/pi-llm-server/logs/`，本地 `logs/` 目录移除或加入 `.gitignore` |
 | **归档** | `data/` | 加入 `.gitignore`（测试数据保留） |
 | **归档** | `output/` | 加入 `.gitignore` |
 
@@ -529,7 +527,7 @@ ENV/
 *.swp
 *.swo
 
-# Logs (项目本地 logs/ 已废弃，日志使用系统目录 /var/log/pi-llm-server/)
+# Logs (项目本地 logs/ 已废弃，日志使用用户目录 ~/.cache/pi-llm-server/logs/)
 logs/
 *.log
 
@@ -540,7 +538,7 @@ output/
 
 # Config files (keep example)
 config.yaml
-!config.example.yaml
+!examples/config.example.yaml
 
 # Test data (optional)
 data/*.mp3
@@ -627,12 +625,11 @@ from pi_llm_server import app
 - [ ] 归档 `backup/` 目录
 - [ ] 清理 `__pycache__/`
 - [ ] 归档 `results/`、`data/`（测试数据）
-- [ ] 移除项目本地 `logs/` 目录（日志改用系统目录 `/var/log/pi-llm-server/`）
+- [ ] 移除项目本地 `logs/` 目录（日志改用用户目录 `~/.cache/pi-llm-server/logs/`）
 
-### 阶段 4.5: 系统目录配置（需要 root 权限）
-- [ ] 创建系统日志目录 `/var/log/pi-llm-server/`
-- [ ] 创建系统 PID 目录 `/run/pi-llm-server/`
-- [ ] 设置适当的权限（允许非 root 用户写入）
+### 阶段 4.5: 用户目录配置（无需 root 权限）
+- [ ] 程序自动创建日志目录 `~/.cache/pi-llm-server/logs/`
+- [ ] 程序自动创建 PID 目录 `~/.cache/pi-llm-server/pids/`
 
 ### 阶段 5: 验证
 - [ ] 测试 `pip install -e .`
@@ -708,7 +705,6 @@ mkdocs new docs-site
 | **导入路径** | 原有 `from pi_llm_server` 需调整 | 保持包内导入不变 |
 | **客户端脚本** | `embedding_client.py` 等需迁移到 `scripts/` | 更新文档说明新位置 |
 | **MinerU 依赖** | 需单独 conda 环境 | 在文档中说明 |
-| **系统目录权限** | `/var/log/pi-llm-server/` 和 `/run/pi-llm-server/` 需要 root 权限创建 | 提供安装脚本自动创建，或使用用户目录作为备选 |
 | **配置初始化** | 首次运行时需自动创建配置 | 程序启动时检测并初始化 |
 
 ---

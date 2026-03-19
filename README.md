@@ -1,77 +1,147 @@
-# AI 模型推理服务
+# PI-LLM-Server - 统一 LLM 服务网关
 
-本目录提供 Embedding、Reranker、ASR（语音识别）、MinerU（PDF 解析）四类服务的服务器和客户端程序。所有服务基于 HuggingFace Transformers + FastAPI 或 vLLM 构建，提供 OpenAI 兼容的 API 接口。
+统一集成 Embedding、ASR、Reranker、MinerU 四个子服务，提供标准化的 Python 包管理、统一的 API 入口、
+请求队列管理、认证管理和健康监控等功能。
 
 ## 目录结构
 
-### 统一服务（推荐）
-
-| 文件 | 说明 |
-|------|------|
-| `pi-llm-server.py` | **统一服务网关**（集成所有子服务） |
-| `pi_llm_server/` | 统一服务模块包 |
-| `config.yaml` | 统一服务配置文件 |
-| `config.example.yaml` | 配置文件示例 |
-| `start_all_services.sh` | 一键启动所有服务脚本 |
-
-### 子服务（独立运行）
-
-| 文件 | 说明 |
-|------|------|
-| `embedding_server.py` | Embedding 服务器（SentenceTransformer + FastAPI） |
-| `embedding_client.py` | Embedding 客户端（embed、embed-test、embed-search） |
-| `embedding_test_data.py` | Embedding 测试数据生成器 |
-| `reranker_server.py` | Reranker 服务器（HuggingFace CausalLM + FastAPI） |
-| `reranker_client.py` | Reranker 客户端（rerank、rerank-batch、rerank-docs） |
-| `asr_server.py` | ASR 语音识别服务器（qwen-asr + vLLM） |
-| `asr_client.py` | ASR 客户端（chat API / transcription API / OpenAI SDK） |
-| `mineru_server.sh` | MinerU 服务启动脚本（端口 8094） |
-| `mineru_client.py` | MinerU PDF 解析 API 调用脚本 |
+```
+pi-llm-server/
+├── pyproject.toml                # 项目配置文件
+├── README.md                     # 项目说明
+├── pi-llm-server.py              # 主程序入口（兼容旧版）
+├── pi_llm_server/                # 主包
+│   ├── __init__.py
+│   ├── __main__.py               # python -m 入口
+│   ├── cli.py                    # 命令行入口
+│   ├── server.py                 # FastAPI 应用
+│   ├── config.py
+│   ├── auth.py
+│   ├── queue_manager.py
+│   ├── health_monitor.py
+│   ├── services/
+│   │   ├── embedding.py
+│   │   ├── asr.py
+│   │   ├── reranker.py
+│   │   └── mineru.py
+│   └── utils/
+│       ├── logging.py
+│       └── exceptions.py
+├── scripts/                      # 辅助脚本
+│   ├── embedding_server.py
+│   ├── embedding_client.py
+│   ├── asr_server.py
+│   ├── asr_client.py
+│   ├── reranker_server.py
+│   ├── reranker_client.py
+│   ├── mineru_server.sh
+│   ├── mineru_client.py
+│   ├── service_manager.py        # 服务管理工具
+│   └── start_all_services.sh
+├── tests/                        # 测试目录
+└── examples/                     # 使用示例
+```
 
 ---
 
-## 0. 统一服务（推荐）
+## 快速开始
 
-**PI-LLM-Server** 是统一服务网关，集成所有子服务，提供：
-- **统一 API 入口**: 单个服务暴露所有功能（端口 8090）
-- **请求队列管理**: 差异化并发控制（Embedding/Reranker 多并发，ASR/MinerU 顺序处理）
-- **OpenAI 兼容接口**: `/v1/models`, `/health`, `/status` 等
-- **状态与健康监控**: 统一的健康检查和状态查询
-- **集中配置管理**: YAML 配置文件管理所有子服务参数
-- **在线 API 文档**: FastAPI 自动生成的交互式文档 (`/docs`)
-- **Token 认证**: Bearer Token 认证中间件
+### 1. 安装
 
-### 依赖安装
+#### 方式 1: pip 安装（推荐）
 
 ```bash
-pip install fastapi uvicorn httpx pyyaml pydantic python-multipart
+# 进入项目目录
+cd pi-llm-server
+
+# 可编辑模式安装（开发推荐）
+pip install -e ".[all]"
+
+# 或只安装核心依赖
+pip install -e .
+
+# 或安装核心 + Embedding
+pip install -e ".[embedding]"
 ```
 
-### 配置文件
-
-复制配置文件示例并修改：
+#### 方式 2: 直接运行
 
 ```bash
-cp config.example.yaml config.yaml
+# 确保依赖已安装
+pip install fastapi uvicorn httpx pyyaml pydantic python-multipart
+
+# 直接运行
+python pi-llm-server.py --config config.yaml
+```
+
+### 2. 配置
+
+配置文件默认位置：`~/.config/pi-llm-server/config.yaml`
+
+首次运行时会自动从 `examples/config.example.yaml` 复制配置文件。
+
+```bash
+# 手动复制配置文件
+cp examples/config.example.yaml ~/.config/pi-llm-server/config.yaml
+
+# 或运行程序自动创建
+pi-llm-server
 ```
 
 主要配置项：
-- `server.port`: 统一服务端口（默认 8090）
+- `server.host/port`: 服务地址和端口
 - `auth.tokens`: 访问 token 列表
-- `queue.services`: 各服务队列配置（并发数、超时等）
+- `queue.services`: 各服务队列配置
 - `services.*.base_url`: 各子服务地址
 
-### 启动服务
+### 3. 启动服务
+
+#### 方式 1: 使用命令行工具（推荐）
 
 ```bash
-# 方式 1: 一键启动所有服务（推荐）
-./start_all_services.sh
+# 启动所有子服务
+python scripts/service_manager.py start --all
 
-# 方式 2: 只启动统一服务（需确保子服务已运行）
+# 启动所有服务（包括网关）
+python scripts/service_manager.py start --with-gateway
+
+# 启动单个服务
+python scripts/service_manager.py start embedding
+
+# 查看服务状态
+python scripts/service_manager.py status
+
+# 停止所有服务
+python scripts/service_manager.py stop --all
+```
+
+#### 方式 2: 使用 bash 脚本
+
+```bash
+# 一键启动所有服务
+./scripts/start_all_services.sh
+```
+
+#### 方式 3: 使用新的命令行入口
+
+```bash
+# 启动主服务
+pi-llm-server
+
+# 或指定配置
+pi-llm-server --config /path/to/config.yaml --port 8090
+```
+
+#### 方式 4: 使用 python -m
+
+```bash
+python -m pi_llm_server
+```
+
+#### 方式 5: 直接运行主程序（兼容旧版）
+
+```bash
 python pi-llm-server.py --config config.yaml
-
-# 方式 3: 后台运行
-nohup python pi-llm-server.py > logs/pi-llm-server.log 2>&1 &
 ```
 
 ### API 端点
@@ -130,7 +200,25 @@ curl -X POST http://localhost:8090/v1/ocr/parser \
 
 ---
 
----
+## 测试
+
+运行测试套件：
+
+```bash
+# 安装开发依赖
+pip install -e ".[dev]"
+
+# 运行所有测试
+pytest tests/ -v
+
+# 运行单个测试文件
+pytest tests/test_config.py -v
+
+# 带覆盖率报告
+pytest tests/ -v --cov=pi_llm_server
+```
+
+## 子服务文档
 
 ## 1. Embedding 服务
 

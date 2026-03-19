@@ -67,3 +67,6 @@ reranker 模型使用显存太多了，帮我写一个CPU版本的server
 
 
 我修改了这个项目的目录与结构设计文档 doc/PYTHON_PACKAGE_REFACTOR_PLAN.md ， 你再仔细检查一下，是否有错误、前后不一致的地方，如果有修改一下
+
+
+按照项目的目录与结构设计文档 doc/PYTHON_PACKAGE_REFACTOR_PLAN.md 里面写的，实现出来
