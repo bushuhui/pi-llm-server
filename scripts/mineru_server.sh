@@ -1,6 +1,13 @@
 #!/bin/bash
 # MinerU API 启动脚本
-# 使用方法：./mineru_server.sh [start|stop|restart]
+# 使用方法：./mineru_server.sh [start|stop|restart] [--host HOST] [--port PORT] [--vram VRAM] [--model-source SOURCE]
+#
+# 参数说明:
+#   --host          服务监听地址（默认：0.0.0.0）
+#   --port          服务端口（默认：8094）
+#   --vram          显存限制 MB（默认：9000）
+#   --model-source  模型源：huggingface/modelscope/local（默认：modelscope）
+#   --python-path   Python 解释器路径（必需）
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -11,13 +18,63 @@ mkdir -p "$LOGS_DIR" "$PID_DIR"
 LOG_FILE="${LOGS_DIR}/mineru.log"
 PID_FILE="${PID_DIR}/mineru.pid"
 
-# 配置参数
+# 默认配置
 HOST="0.0.0.0"
 PORT="8094"
-# 设置 VRAM 限制（MB），根据显存大小调整，2080Ti 建议设置为 9000-11000
 VRAM="9000"
-# 模型源：huggingface / modelscope / local（国内建议用 modelscope）
 MODEL_SOURCE="${MINERU_MODEL_SOURCE:-modelscope}"
+PYTHON_PATH=""
+
+# 解析命令行参数
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --host)
+            HOST="$2"
+            shift 2
+            ;;
+        --port)
+            PORT="$2"
+            shift 2
+            ;;
+        --vram)
+            VRAM="$2"
+            shift 2
+            ;;
+        --model-source)
+            MODEL_SOURCE="$2"
+            shift 2
+            ;;
+        --python-path)
+            PYTHON_PATH="$2"
+            shift 2
+            ;;
+        start|stop|restart)
+            ACTION="$1"
+            shift
+            ;;
+        *)
+            echo "未知参数：$1"
+            echo "使用方法：$0 [start|stop|restart] [--host HOST] [--port PORT] [--vram VRAM] [--model-source SOURCE] --python-path PATH"
+            exit 1
+            ;;
+    esac
+done
+
+# 默认 action 为 start
+ACTION="${ACTION:-start}"
+
+# 检查 Python 路径是否提供
+if [ -z "$PYTHON_PATH" ]; then
+    echo "错误：必须指定 --python-path 参数"
+    echo "示例：$0 start --python-path /home/tiger/anaconda3/envs/mineru/bin/python"
+    exit 1
+fi
+
+# 检查 Python 解释器是否存在
+if [ ! -x "$PYTHON_PATH" ]; then
+    echo "错误：Python 解释器不存在或不可执行：$PYTHON_PATH"
+    exit 1
+fi
 
 start_server() {
     if [ -f "$PID_FILE" ]; then
@@ -29,11 +86,12 @@ start_server() {
     fi
 
     echo "$(date '+%Y-%m-%d %H:%M:%S') 启动 MinerU API 服务..."
-    echo "$(date '+%Y-%m-%d %H:%M:%S') Host: $HOST, Port: $PORT, VRAM: ${VRAM}MB, 模型源: $MODEL_SOURCE"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') Host: $HOST, Port: $PORT, VRAM: ${VRAM}MB, 模型源：$MODEL_SOURCE"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') Python: $PYTHON_PATH"
 
     # 后台启动，设置模型源环境变量
     MINERU_MODEL_SOURCE="$MODEL_SOURCE" \
-    nohup /home/tiger/anaconda3/envs/mineru/bin/mineru-api \
+    nohup "$PYTHON_PATH" -m mineru.server \
         --host "$HOST" \
         --port "$PORT" \
         --vram "$VRAM" \
@@ -68,7 +126,7 @@ stop_server() {
     return 1
 }
 
-case "${1:-start}" in
+case "$ACTION" in
     start)
         start_server
         ;;
@@ -81,7 +139,7 @@ case "${1:-start}" in
         start_server
         ;;
     *)
-        echo "使用方法：$0 {start|stop|restart}"
+        echo "使用方法：$0 {start|stop|restart} [--host HOST] [--port PORT] [--vram VRAM] [--model-source SOURCE] --python-path PATH"
         exit 1
         ;;
 esac

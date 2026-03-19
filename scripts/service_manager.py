@@ -30,10 +30,15 @@ import sys
 import signal
 import time
 import subprocess
+import yaml
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
-# 服务配置
+# 默认配置文件路径
+DEFAULT_CONFIG_DIR = Path.home() / ".config" / "pi-llm-server"
+DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.yaml"
+
+# 服务配置（默认值，可从配置文件覆盖）
 SERVICE_CONFIG = {
     'embedding': {
         'script': 'embedding_server.py',
@@ -69,6 +74,51 @@ PID_DIR = Path.home() / '.cache' / 'pi-llm-server' / 'pids'
 # 确保目录存在
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 PID_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def load_config() -> Dict[str, Any]:
+    """加载配置文件"""
+    if not DEFAULT_CONFIG_FILE.exists():
+        return {}
+
+    try:
+        with open(DEFAULT_CONFIG_FILE, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:
+        print(f"警告：配置文件加载失败：{e}")
+        return {}
+
+
+def get_service_config(service_name: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    """从配置文件获取服务配置，合并默认配置"""
+    default = SERVICE_CONFIG.get(service_name, {})
+
+    services_cfg = config.get('services', {})
+    service_cfg = services_cfg.get(service_name, {})
+
+    # 合并配置
+    merged = {**default}
+
+    if service_cfg.get('base_url'):
+        # 从 base_url 提取端口
+        import re
+        match = re.search(r':(\d+)$', service_cfg['base_url'])
+        if match:
+            merged['port'] = int(match.group(1))
+
+    # MinerU 特有配置
+    if service_name == 'mineru':
+        mineru_config = service_cfg.get('config', {})
+        merged['vram'] = mineru_config.get('vram', '9000')
+        merged['model_source'] = mineru_config.get('model_source', 'modelscope')
+        merged['python_path'] = service_cfg.get('python_path', '')
+        merged['working_directory'] = service_cfg.get('working_directory', str(Path(__file__).parent))
+
+    # 其他服务的 python_path 配置
+    if 'python_path' in service_cfg:
+        merged['python_path'] = service_cfg['python_path']
+
+    return merged
 
 
 def get_log_dir() -> Path:
@@ -131,33 +181,83 @@ def get_service_pid(service_name: str) -> Optional[int]:
     return None
 
 
-def start_service(service_name: str, background: bool = True) -> bool:
+def start_service(service_name: str, background: bool = True, config: Dict[str, Any] = None) -> bool:
     """启动单个服务"""
-    config = SERVICE_CONFIG.get(service_name)
-    if not config:
+    if config is None:
+        config = load_config()
+
+    service_config = get_service_config(service_name, config)
+
+    if not service_config:
         print(f"错误：未知服务 '{service_name}'")
         return False
 
     if is_service_running(service_name):
-        print(f"✓ {config['name']} 已在运行")
+        print(f"✓ {service_config['name']} 已在运行")
         return True
 
     script_dir = Path(__file__).parent
     log_file = get_log_file(service_name)
     pid_file = get_pid_file(service_name)
 
-    print(f"启动 {config['name']}...", end=" ")
+    print(f"启动 {service_config['name']}...", end=" ")
 
     try:
         if service_name == 'gateway':
-            # 网关使用 python -m pi_llm_server 启动
-            cmd = [sys.executable, '-m', 'pi_llm_server']
-        elif config['script'].endswith('.sh'):
-            # Shell 脚本
-            cmd = ['bash', script_dir / config['script'], 'start']
+            # 网关使用 python -m pi_llm_server 启动，传递配置文件路径
+            cmd = [sys.executable, '-m', 'pi_llm_server', '--config', str(DEFAULT_CONFIG_FILE)]
+
+        elif service_config['script'].endswith('.sh'):
+            # Shell 脚本（MinerU）- 传递命令行参数
+            python_path = service_config.get('python_path', '')
+            if not python_path:
+                print(f"✗ {service_config['name']} 需要在配置文件中指定 python_path")
+                return False
+
+            working_dir = service_config.get('working_directory', str(script_dir))
+
+            cmd = [
+                'bash', script_dir / service_config['script'], 'start',
+                '--host', '0.0.0.0',
+                '--port', str(service_config['port']),
+                '--vram', str(service_config.get('vram', '9000')),
+                '--model-source', str(service_config.get('model_source', 'modelscope')),
+                '--python-path', python_path,
+            ]
+            # 切换到工作目录
+            script_dir = Path(working_dir)
+
         else:
-            # Python 脚本
-            cmd = [sys.executable, script_dir / config['script']]
+            # Python 脚本（Embedding/ASR/Reranker）- 从配置获取参数
+            python_path = service_config.get('python_path', sys.executable)
+
+            # 构建命令行参数
+            cmd = [python_path, script_dir / service_config['script']]
+
+            # 根据服务类型添加特定参数
+            if service_name == 'embedding':
+                # embedding 参数从配置读取
+                models = config.get('services', {}).get('embedding', {}).get('models', [])
+                if models:
+                    model = models[0]
+                    cmd.extend(['--model-path', model.get('path', '')])
+                    cmd.extend(['--device', model.get('device', 'cpu')])
+
+            elif service_name == 'asr':
+                # ASR 参数从配置读取
+                models = config.get('services', {}).get('asr', {}).get('models', [])
+                if models:
+                    model = models[0]
+                    cmd.extend(['--model-path', model.get('path', '')])
+                    cmd.extend(['--gpu-memory-utilization', str(model.get('gpu_memory_utilization', 0.9))])
+
+            elif service_name == 'reranker':
+                # Reranker 参数从配置读取
+                models = config.get('services', {}).get('reranker', {}).get('models', [])
+                if models:
+                    model = models[0]
+                    cmd.extend(['--model-path', model.get('path', '')])
+                    cmd.extend(['--device', model.get('device', 'cpu')])
 
         if background:
             # 后台运行
@@ -183,14 +283,14 @@ def start_service(service_name: str, background: bool = True) -> bool:
         time.sleep(3)
 
         if is_service_running(service_name):
-            print(f"✓ {config['name']} 启动成功")
+            print(f"✓ {service_config['name']} 启动成功")
             return True
         else:
-            print(f"✗ {config['name']} 启动失败，请查看日志：{log_file}")
+            print(f"✗ {service_config['name']} 启动失败，请查看日志：{log_file}")
             return False
 
     except Exception as e:
-        print(f"✗ {config['name']} 启动异常：{e}")
+        print(f"✗ {service_config['name']} 启动异常：{e}")
         return False
 
 
@@ -242,11 +342,13 @@ def stop_service(service_name: str) -> bool:
         return False
 
 
-def restart_service(service_name: str) -> bool:
+def restart_service(service_name: str, config: Dict[str, Any] = None) -> bool:
     """重启服务"""
+    if config is None:
+        config = load_config()
     stop_service(service_name)
     time.sleep(1)
-    return start_service(service_name)
+    return start_service(service_name, config=config)
 
 
 def show_status():
@@ -256,12 +358,12 @@ def show_status():
     print("=" * 60)
     print()
 
-    for name, config in SERVICE_CONFIG.items():
+    for name, cfg in SERVICE_CONFIG.items():
         status = "运行中" if is_service_running(name) else "已停止"
         pid = get_service_pid(name)
         pid_str = f"(PID: {pid})" if pid else ""
         symbol = "✓" if is_service_running(name) else "✗"
-        print(f"  {symbol} {config['name']:20s} {status:10s} 端口：{config['port']:5d} {pid_str}")
+        print(f"  {symbol} {cfg['name']:20s} {status:10s} 端口：{cfg['port']:5d} {pid_str}")
 
     print()
     print("=" * 60)
@@ -269,21 +371,24 @@ def show_status():
     # 显示目录信息
     print(f"日志目录：{get_log_dir()}")
     print(f"PID 目录：{get_pid_dir()}")
+    print(f"配置文件：{DEFAULT_CONFIG_FILE}")
 
 
 def start_all(with_gateway: bool = False):
     """启动所有服务"""
+    config = load_config()
+
     print("正在启动所有服务...")
     print()
 
     # 启动子服务
     for name in ['embedding', 'asr', 'reranker', 'mineru']:
-        start_service(name)
+        start_service(name, config=config)
 
     # 启动网关
     if with_gateway:
         print()
-        start_service('gateway')
+        start_service('gateway', config=config)
 
 
 def stop_all():

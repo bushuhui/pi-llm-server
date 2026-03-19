@@ -70,3 +70,12 @@ reranker 模型使用显存太多了，帮我写一个CPU版本的server
 
 
 按照项目的目录与结构设计文档 doc/PYTHON_PACKAGE_REFACTOR_PLAN.md 里面写的，实现出来
+
+
+你帮我分析一下 conda 的 vllm的环境里面的包，把主要的安装包信息更新到 doc/requirements_vllm.txt
+
+
+你参考 doc/requirements_vllm.txt 的包（只列出直接依赖的包，放宽一些包的版本，大于等于某个版本）。帮我把conda 环境 mineru 里面的包 整理成 doc/requirements_mineru.txt
+
+
+配置文件 config.yaml 的示例在 examples/config.example.yaml ； 改进 scripts/mineru_server.sh 把里面写死的 Python路径，改成从命令行参数读取 ； 在 service_manager.py 中添加配置读取功能，启动 mineru, embedding 等服务启动程序、脚本的时候传递参数
