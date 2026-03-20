@@ -5,6 +5,47 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.1.4] - 2026-03-20
+
+### Fixed
+- **MinerU 服务修复**:
+  - 修复网关调用 MinerU 后端的 API 路径错误（从 `/v1/ocr/parser` 改为 `/file_parse`）
+  - 修复 MinerU 健康检查端点（从 `/health` 改为 `/openapi.json`）
+  - MinerU 服务健康状态现在正确显示为 `healthy`
+
+### Changed
+- **文档更新**:
+  - 更新 `README.md` 添加完整的 Python 客户端示例 (`examples/basic_usage.py`)
+  - 更新 `README.md` 添加详细的 API 请求/响应示例
+  - 更新 `README.md` 故障排查部分，增加健康状态说明
+  - 修正 MinerU 环境说明：不需要独立 Python 环境，使用同一环境即可
+
+### Added
+- **测试文件**:
+  - `examples/basic_usage.py` 现在包含完整的 API 调用示例
+  - 支持使用 `data/audio_s.mp3` 和 `data/InfoLOD.pdf` 进行测试
+
+---
+
+## [1.1.3] - 2026-03-20
+
+### Fixed
+- **API 路径修复**:
+  - 修正 ASR API 路径：从 `/v1/asr/transcribe` 改为 `/v1/audio/transcriptions`
+  - 修正 PDF API 路径：从 `/v1/mineru/parse` 改为 `/v1/ocr/parser`
+  - 修正 form 字段名：ASR 从 `audio` 改为 `file`，PDF 从 `file` 改为 `files`
+
+- **响应字段修复**:
+  - 修正 Rerank 响应字段：从 `score` 改为 `relevance_score`
+
+### Changed
+- **示例程序更新**:
+  - 更新 `examples/basic_usage.py` 所有 API 调用路径
+  - 添加 `transcribe_audio_sample()` 和 `parse_pdf_sample()` 函数
+  - 改进错误处理和响应验证
+
+---
+
 ## [1.1.2] - 2026-03-20
 
 ### Added
@@ -165,6 +206,9 @@
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| 1.1.4 | 2026-03-20 | MinerU API 路径修复，README 文档完善 |
+| 1.1.3 | 2026-03-20 | API 路径修复，示例程序更新 |
+| 1.1.2 | 2026-03-20 | 目录结构重构，服务脚本迁移到 launcher/clients |
 | 1.1.0 | 2026-03-20 | 目录结构重构，服务脚本迁移到 launcher/clients |
 | 1.0.0 | 2026-03-19 | 标准 Python 包结构重构完成 |
 | 0.1.0 | 2026-03-17 | 初始版本发布 |
@@ -194,4 +238,4 @@ e189aab  2026-03-17      First version
 
 ---
 
-*最后更新：2026-03-20*
+*最后更新：2026-03-20 (v1.1.4)*

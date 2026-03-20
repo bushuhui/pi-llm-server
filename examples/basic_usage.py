@@ -11,7 +11,7 @@ import base64
 BASE_URL = "http://127.0.0.1:8090"
 
 # API Token（从配置文件获取）
-API_TOKEN = "sk-admin-token-001"
+API_TOKEN = "sk-5f8b839908d14561590b70227c72ca86"
 
 # 请求头
 HEADERS = {
@@ -73,20 +73,20 @@ def rerank_documents(query: str, documents: list):
     result = response.json()
     print("重排序结果:")
     for item in result.get("results", []):
-        print(f"  文档 {item['index']}: 得分 {item['score']:.4f}")
+        print(f"  文档 {item['index']}: 得分 {item['relevance_score']:.4f}")
     return result
 
 
 def transcribe_audio(audio_path: str):
-    """语音转文字"""
+    """语音转文字 (ASR)"""
     # 读取音频文件
     with open(audio_path, "rb") as f:
         audio_data = f.read()
 
     # 使用 multipart/form-data 上传
-    files = {"audio": ("audio.wav", audio_data, "audio/wav")}
+    files = {"file": ("audio.mp3", audio_data, "audio/mpeg")}
     response = httpx.post(
-        f"{BASE_URL}/v1/asr/transcribe",
+        f"{BASE_URL}/v1/audio/transcriptions",
         files=files,
         headers={"Authorization": f"Bearer {API_TOKEN}"},
         timeout=300,
@@ -97,21 +97,63 @@ def transcribe_audio(audio_path: str):
 
 
 def parse_pdf(pdf_path: str):
-    """解析 PDF 文件"""
+    """解析 PDF 文件 (MinerU/OCR)"""
     # 读取 PDF 文件
     with open(pdf_path, "rb") as f:
         pdf_data = f.read()
 
-    files = {"file": ("document.pdf", pdf_data, "application/pdf")}
+    files = {"files": ("document.pdf", pdf_data, "application/pdf")}
     response = httpx.post(
-        f"{BASE_URL}/v1/mineru/parse",
+        f"{BASE_URL}/v1/ocr/parser",
         files=files,
         headers={"Authorization": f"Bearer {API_TOKEN}"},
         timeout=600,
     )
-    result = response.json()
-    print("PDF 解析结果:", result)
-    return result
+
+    # 检查响应
+    if response.status_code != 200:
+        try:
+            error_data = response.json()
+            print(f"请求失败：{response.status_code}")
+            print(f"错误信息：{error_data}")
+        except:
+            print(f"请求失败：{response.status_code}")
+            print(f"响应内容：{response.text[:200]}")
+        return None
+
+    content_type = response.headers.get("content-type", "")
+    if "application/zip" not in content_type:
+        print(f"警告：响应类型不是 ZIP ({content_type})")
+        return None
+
+    print(f"PDF 解析完成，ZIP 大小：{len(response.content)} bytes ({len(response.content) / 1024 / 1024:.2f} MB)")
+    return response.content
+
+
+def transcribe_audio_sample():
+    """ASR 语音转文字示例"""
+    import os
+
+    audio_file = "data/audio_s.mp3"
+    if not os.path.exists(audio_file):
+        print(f"警告：音频文件不存在：{audio_file}")
+        return None
+
+    print(f"使用音频文件：{audio_file}")
+    return transcribe_audio(audio_file)
+
+
+def parse_pdf_sample():
+    """OCR/PDF 解析示例"""
+    import os
+
+    pdf_file = "data/InfoLOD.pdf"
+    if not os.path.exists(pdf_file):
+        print(f"警告：PDF 文件不存在：{pdf_file}")
+        return None
+
+    print(f"使用 PDF 文件：{pdf_file}")
+    return parse_pdf(pdf_file)
 
 
 def main():
@@ -154,6 +196,18 @@ def main():
         "深度学习是机器学习的子集",
     ]
     rerank_result = rerank_documents("深度学习", docs)
+    print()
+
+    # 6. ASR 语音转文字
+    print("6. ASR 语音转文字")
+    print("-" * 40)
+    transcribe_audio_sample()
+    print()
+
+    # 7. OCR/PDF 解析
+    print("7. OCR/PDF 解析")
+    print("-" * 40)
+    parse_pdf_sample()
     print()
 
     print("=" * 60)

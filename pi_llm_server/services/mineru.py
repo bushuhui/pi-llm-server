@@ -4,7 +4,8 @@
 MinerU PDF 解析服务模块
 
 提供 PDF 文件解析服务，包括:
-- /v1/ocr/parser: PDF/OCR 解析
+- /v1/ocr/parser: PDF/OCR 解析 (前端网关路由)
+- /file_parse: PDF/OCR 解析 (后端 MinerU API 实际路径)
 """
 
 import httpx
@@ -128,7 +129,7 @@ class MinerUService:
                 logger.info(f"文件：{file_filename}, 后端：{backend}, 超时：{self.timeout}s")
 
                 response = await self.client.post(
-                    "/v1/ocr/parser",
+                    "/file_parse",
                     files=files,
                     data=data,
                 )
@@ -160,16 +161,16 @@ class MinerUService:
         Returns:
             dict: 健康状态
         """
-        # MinerU 可能没有 /health 端点，直接返回健康
+        # MinerU 没有 /health 端点，检查 /openapi.json
         try:
-            response = await self.client.get("/health", timeout=5.0)
+            response = await self.client.get("/openapi.json", timeout=5.0)
             if response.status_code == 200:
                 return {"status": "healthy", "latency_ms": response.elapsed.total_seconds() * 1000}
             else:
                 return {"status": "unknown", "status_code": response.status_code}
         except Exception as e:
-            # MinerU 没有健康端点时，返回 unknown 而非 unhealthy
-            return {"status": "unknown", "note": "MinerU 服务未提供健康检查端点"}
+            # 连接失败时返回 unhealthy
+            return {"status": "unhealthy", "error": str(e)}
 
     async def get_models(self) -> List[dict]:
         """

@@ -143,7 +143,7 @@ cp examples/config.example.yaml ~/.config/pi-llm-server/config.yaml
 
 ### 2. 编辑配置文件
 
-编辑 `~/.config/pi-llm-server/config.yaml`，主要配置项：
+如果使用的模型和上面下载的不同，需要编辑 `~/.config/pi-llm-server/config.yaml`，主要配置项：
 
 ```yaml
 server:
@@ -172,7 +172,13 @@ services:
 
 ### 3. 启动服务
 
-#### 方式 A: 启动统一网关（推荐）
+```bash
+# 启动后台服务 + 网关（一站式启动）
+python -m pi_llm_server start-all
+```
+
+
+#### 方式 A: 启动统一网关
 
 ```bash
 # 使用命令行工具启动网关服务
@@ -197,9 +203,9 @@ python pi_llm_server/launcher/asr_server.py --model-path ~/.cache/modelscope/hub
 # Reranker 服务
 python pi_llm_server/launcher/reranker_server.py --model-path ~/.cache/modelscope/hub/models/Qwen/Qwen3-Reranker-0.6B --device cpu
 
-# MinerU 服务（需要在 MinerU 环境中）
-# 编辑 mineru_server.sh 配置后启动
-./mineru_server.sh start
+# MinerU 服务
+# 注意：MinerU 需要 GPU 支持，建议使用独立显存（9GB 以上）
+./mineru_server.sh start --python-path /path/to/python
 ```
 
 #### 方式 C: 使用服务管理器
@@ -222,7 +228,9 @@ python pi_llm_server/launcher/service_manager.py stop --all
 curl http://localhost:8090/health
 
 # 列出可用模型
-curl http://localhost:8090/v1/models
+curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:8090/v1/models
+# 例如
+curl -H "Authorization: Bearer sk-5f8b839908d14561590b70227c72ca86" http://localhost:8090/v1/models
 
 # 生成 Embedding
 curl -X POST http://localhost:8090/v1/embeddings \
@@ -230,6 +238,150 @@ curl -X POST http://localhost:8090/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{"input": "你好，世界！"}'
 ```
+
+### 5. Python 客户端示例
+
+项目提供了完整的 Python 使用示例 [`examples/basic_usage.py`](examples/basic_usage.py)：
+
+```python
+"""
+PI-LLM-Server 基本使用示例
+
+本示例展示如何使用 Python 客户端调用 PI-LLM-Server 提供的服务。
+"""
+
+import httpx
+
+# 服务地址
+BASE_URL = "http://127.0.0.1:8090"
+
+# API Token（从配置文件获取）
+API_TOKEN = "sk-5f8b839908d14561590b70227c72ca86"
+
+# 请求头
+HEADERS = {
+    "Authorization": f"Bearer {API_TOKEN}",
+    "Content-Type": "application/json",
+}
+
+
+def check_health():
+    """检查服务健康状态"""
+    response = httpx.get(f"{BASE_URL}/health")
+    print("健康状态:", response.json())
+    return response.json()
+
+
+def list_models():
+    """列出所有可用模型"""
+    response = httpx.get(f"{BASE_URL}/v1/models", headers=HEADERS)
+    print("可用模型:", response.json())
+    return response.json()
+
+
+def get_status():
+    """获取服务详细状态"""
+    response = httpx.get(f"{BASE_URL}/status", headers=HEADERS)
+    print("服务状态:", response.json())
+    return response.json()
+
+
+def generate_embedding(text: str, model: str = "unsloth/Qwen3-Embedding-0.6B"):
+    """生成文本 embedding"""
+    payload = {
+        "model": model,
+        "input": [text],
+    }
+    response = httpx.post(
+        f"{BASE_URL}/v1/embeddings",
+        json=payload,
+        headers=HEADERS,
+        timeout=60,
+    )
+    result = response.json()
+    print(f"Embedding 维度：{len(result['data'][0]['embedding'])}")
+    return result
+
+
+def rerank_documents(query: str, documents: list):
+    """对文档进行重排序"""
+    payload = {
+        "query": query,
+        "documents": documents,
+    }
+    response = httpx.post(
+        f"{BASE_URL}/v1/rerank",
+        json=payload,
+        headers=HEADERS,
+        timeout=120,
+    )
+    result = response.json()
+    print("重排序结果:")
+    for item in result.get("results", []):
+        print(f"  文档 {item['index']}: 得分 {item['relevance_score']:.4f}")
+    return result
+
+
+def transcribe_audio(audio_path: str):
+    """语音转文字 (ASR)"""
+    # 读取音频文件
+    with open(audio_path, "rb") as f:
+        audio_data = f.read()
+
+    # 使用 multipart/form-data 上传
+    files = {"file": ("audio.mp3", audio_data, "audio/mpeg")}
+    response = httpx.post(
+        f"{BASE_URL}/v1/audio/transcriptions",
+        files=files,
+        headers={"Authorization": f"Bearer {API_TOKEN}"},
+        timeout=300,
+    )
+    result = response.json()
+    print("转录结果:", result.get("text", ""))
+    return result
+
+
+def parse_pdf(pdf_path: str):
+    """解析 PDF 文件 (MinerU/OCR)"""
+    # 读取 PDF 文件
+    with open(pdf_path, "rb") as f:
+        pdf_data = f.read()
+
+    files = {"files": ("document.pdf", pdf_data, "application/pdf")}
+    response = httpx.post(
+        f"{BASE_URL}/v1/ocr/parser",
+        files=files,
+        headers={"Authorization": f"Bearer {API_TOKEN}"},
+        timeout=600,
+    )
+    print(f"PDF 解析完成，ZIP 大小：{len(response.content)} bytes")
+    return response.content
+
+
+if __name__ == "__main__":
+    # 运行所有测试
+    check_health()
+    list_models()
+    generate_embedding("你好，世界！")
+    rerank_documents("深度学习", [
+        "人工智能是计算机科学的一个分支",
+        "机器学习是实现人工智能的方法之一",
+        "深度学习是机器学习的子集",
+    ])
+    # transcribe_audio("data/audio_s.mp3")  # ASR 测试
+    # parse_pdf("data/InfoLOD.pdf")         # PDF 解析测试
+```
+
+**运行示例**:
+
+```bash
+cd pi-llm-server
+python examples/basic_usage.py
+```
+
+示例会自动使用 `data/` 目录下的测试文件：
+- `data/audio_s.mp3` - ASR 语音识别测试
+- `data/InfoLOD.pdf` - PDF 解析测试
 
 ---
 
@@ -291,9 +443,113 @@ curl -X POST http://localhost:8090/v1/embeddings \
 | `/v1/ocr/parser` | POST | PDF 解析 | 是 |
 | `/docs` | GET | Swagger 文档 | 否 |
 
-### 使用示例
+### API 使用示例
 
-详见 [doc/README_services.md](doc/README_services.md)
+#### 1. 生成 Embedding
+
+**请求**:
+```bash
+curl -X POST http://localhost:8090/v1/embeddings \
+  -H "Authorization: Bearer sk-your-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "unsloth/Qwen3-Embedding-0.6B",
+    "input": ["你好，世界！"]
+  }'
+```
+
+**响应**:
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "object": "embedding",
+      "index": 0,
+      "embedding": [-0.012, 0.045, ...]
+    }
+  ],
+  "model": "unsloth/Qwen3-Embedding-0.6B",
+  "usage": {
+    "prompt_tokens": 5,
+    "total_tokens": 5
+  }
+}
+```
+
+#### 2. 文档重排序 (Rerank)
+
+**请求**:
+```bash
+curl -X POST http://localhost:8090/v1/rerank \
+  -H "Authorization: Bearer sk-your-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "深度学习",
+    "documents": [
+      "人工智能是计算机科学的一个分支",
+      "机器学习是实现人工智能的方法之一",
+      "深度学习是机器学习的子集"
+    ]
+  }'
+```
+
+**响应**:
+```json
+{
+  "model": "Qwen/Qwen3-Reranker-0.6B",
+  "results": [
+    {"index": 2, "document": "深度学习是机器学习的子集", "relevance_score": 0.8234},
+    {"index": 1, "document": "机器学习是实现人工智能的方法之一", "relevance_score": 0.1523},
+    {"index": 0, "document": "人工智能是计算机科学的一个分支", "relevance_score": 0.0821}
+  ]
+}
+```
+
+#### 3. 语音转文字 (ASR)
+
+**请求**:
+```bash
+curl -X POST http://localhost:8090/v1/audio/transcriptions \
+  -H "Authorization: Bearer sk-your-token" \
+  -F "file=@audio.mp3"
+```
+
+**响应**:
+```json
+{
+  "text": "大家好，这里是最佳拍档..."
+}
+```
+
+#### 4. PDF 解析 (MinerU/OCR)
+
+**请求**:
+```bash
+curl -X POST http://localhost:8090/v1/ocr/parser \
+  -H "Authorization: Bearer sk-your-token" \
+  -F "files=@document.pdf" \
+  -F "backend=pipeline" \
+  -F "parse_method=auto" \
+  -F "lang_list=ch" \
+  -F "return_md=true" \
+  -F "return_images=true" \
+  -o result.zip
+```
+
+**响应**: ZIP 文件，包含：
+- `markdown/` - 解析后的 Markdown 文件
+- `images/` - 提取的图片
+- 其他中间文件
+
+**参数说明**:
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `backend` | pipeline | 解析后端：pipeline/hybrid-auto-engine/vlm-auto-engine |
+| `parse_method` | auto | 解析方法：auto/txt/ocr |
+| `lang_list` | ch | 语言：ch/en/korean/japan |
+| `return_md` | true | 返回 Markdown |
+| `return_images` | true | 返回图片 |
 
 ---
 
@@ -369,6 +625,7 @@ curl -X POST http://localhost:8090/v1/embeddings \
 
 4. **CUDA 版本不匹配**: 检查 PyTorch CUDA 版本与系统 CUDA 是否一致
 
+
 ### 日志位置
 
 ```bash
@@ -377,6 +634,9 @@ curl -X POST http://localhost:8090/v1/embeddings \
 
 # 子服务日志
 ~/.cache/pi-llm-server/logs/<service>.log
+
+# 查看最新日志
+tail -f ~/.cache/pi-llm-server/logs/gateway.log
 ```
 
 ---
