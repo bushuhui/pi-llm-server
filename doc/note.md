@@ -155,3 +155,20 @@ pip install --upgrade -e ".[all]
 # pip安装
 pip install pi-llm-server[all]
 ```
+
+
+## git tag
+
+```bash
+# 增加tag
+git tag -a v1.1.4 -m "发布 v1.1.4 版本，检查所有功能都能正确工作"
+
+# 为指定提交创建标签
+git tag -a v0.9 abc1234 -m "修复 v1.0 前的关键 bug"
+
+# 列出tag
+git tag
+
+# 推送所有本地未推送的标签到远程
+git push origin --tags
+```
