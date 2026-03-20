@@ -198,7 +198,7 @@ all = [
 
 [project.urls]
 Homepage = "https://github.com/bushuhui/pi-llm-server"
-Documentation = "https://pi-llm-server.readthedocs.io"
+Documentation = "https://github.com/bushuhui/pi-llm-server"
 Repository = "https://github.com/bushuhui/pi-llm-server"
 Changelog = "https://github.com/bushuhui/pi-llm-server/blob/main/CHANGELOG.md"
 

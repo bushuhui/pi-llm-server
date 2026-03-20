@@ -43,6 +43,8 @@ PI-LLM-Server 旨在解决以下问题：
 
 ### 1. 环境准备
 
+详细的 conda 安装可以参考： [安装Python环境](https://github.com/bushuhui/machinelearning_notebook/blob/master/references_tips/InstallPython.md)
+
 ```bash
 # 创建 Conda 环境
 conda create -n pi-llm-server python=3.13
@@ -52,12 +54,15 @@ conda activate pi-llm-server
 ### 2. 安装项目
 
 ```bash
-# 方式 1: 进入项目目录安装（推荐）
+# 通过pip安装（推荐）， pip install uv
+uv pip install pi-llm-server[all]
+
+# 源码安装: 进入项目目录安装
 cd pi-llm-server
-pip install -e ".[all]"
+uv pip install -e ".[all]"
 
 # 方式 2: 只安装核心服务（按需选择）
-pip install -e ".[embedding,reranker,asr,mineru]"
+uv pip install -e ".[embedding,reranker,asr,mineru]"
 ```
 
 ### 3. 系统依赖
@@ -68,14 +73,14 @@ pip install -e ".[embedding,reranker,asr,mineru]"
 # 访问 NVIDIA CUDA 下载页面
 # https://developer.nvidia.com/cuda-toolkit-archive
 
-# 或使用快捷链接（CUDA 12.8）
+# 或使用快捷链接（例如 CUDA 12.8）
 # https://developer.nvidia.com/cuda-12-8-1-download-archive
 
 # 安装后创建符号链接（如需要）
 cd /usr/bin
 sudo ln -s /usr/local/cuda-12.8/bin/nvcc nvcc
 
-# 设置环境变量
+# 设置环境变量，把如下的内容放入 /etc/bash.bashrc (如果使用的是bash，其他的sh类似)
 export CUDA_HOME=/usr/local/cuda-12.8
 export PATH=$CUDA_HOME/bin:$CUDA_HOME/nvvm/bin:$PATH
 export CPLUS_INCLUDE_PATH=$CUDA_HOME/include:$CPLUS_INCLUDE_PATH

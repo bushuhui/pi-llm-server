@@ -138,3 +138,20 @@ python asr_client.py transcribe audio_s.mp3
 ```
 
 
+## pypi
+
+```bash
+# 本地安装工具
+pip install -U setuptools wheel twine build
+
+# 打包
+python -m build
+
+# 上传
+twine upload dist/*
+
+# 本地安装
+pip install --upgrade -e ".[all]
+# pip安装
+pip install pi-llm-server[all]
+```
