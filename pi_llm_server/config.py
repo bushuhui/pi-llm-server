@@ -9,7 +9,7 @@
 import os
 import yaml
 from typing import Dict, List, Optional, Any, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pathlib import Path
 
 
@@ -21,7 +21,18 @@ class ModelConfig(BaseModel):
     gpu_memory_utilization: Optional[float] = None
     max_model_len: Optional[int] = None
     launch_script: Optional[str] = None
-    python_path: Optional[str] = None
+
+    @field_validator("path", mode="before")
+    @classmethod
+    def resolve_path(cls, v):
+        """解析路径中的 ~ 和环境变量"""
+        if not v:
+            return v
+        # 展开 ~ 为用户主目录
+        path = os.path.expanduser(v)
+        # 展开环境变量
+        path = os.path.expandvars(path)
+        return path
 
 
 class ServiceQueueConfig(BaseModel):
@@ -43,7 +54,8 @@ class AuthConfig(BaseModel):
     enabled: bool = True
     tokens: List[str] = Field(default_factory=list)
 
-    @validator("tokens")
+    @field_validator("tokens", mode="before")
+    @classmethod
     def validate_tokens(cls, v):
         if not v:
             return []
@@ -68,8 +80,17 @@ class ServiceConfig(BaseModel):
     models: List[ModelConfig] = Field(default_factory=list)
     launch_script: Optional[str] = None
     working_directory: Optional[str] = None
-    python_path: Optional[str] = None
     config: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("working_directory", mode="before")
+    @classmethod
+    def resolve_working_directory(cls, v):
+        """解析 working_directory 中的 ~ 和环境变量"""
+        if not v:
+            return v
+        path = os.path.expanduser(v)
+        path = os.path.expandvars(path)
+        return path
 
 
 class ServicesConfig(BaseModel):

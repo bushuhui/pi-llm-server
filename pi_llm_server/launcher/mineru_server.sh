@@ -82,6 +82,10 @@ start_server() {
         if ps -p "$PID" > /dev/null 2>&1; then
             echo "MinerU API 已在运行中 (PID: $PID)"
             return 1
+        else
+            # PID 文件存在但进程不存在，清理旧文件
+            echo "$(date '+%Y-%m-%d %H:%M:%S') 检测到旧的 PID 文件，但进程不存在，清理中..."
+            rm -f "$PID_FILE"
         fi
     fi
 

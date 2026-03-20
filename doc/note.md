@@ -1,7 +1,9 @@
 
 ## TODO
 
-- [ ] LLM service 测试
+- [x] 配置文件里面的模型需要改成 ~/.cache 开头的路径。
+- [x] 如果用1个Conda环境，能够同时运行mineru和其他vllm服务程序，则配置文件里面的Python程序路径配置项可以去掉
+- [x] pi-llm-server 的gateway 测试
 
 - [x] 统一调整目录，把embedding等脚本挪到 backend 或者 scripts 目录；把 pi_llm_server 挪到 src 目录（或者其他目录）
 - [x] 查一下pip安装的时候，如何把脚本等放到PATH能找到的目录

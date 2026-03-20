@@ -16,11 +16,8 @@ server:
 auth:
   enabled: true
   tokens:
-    - "sk-embedding-token-001"
-    - "sk-asr-token-001"
-    - "sk-reranker-token-001"
-    - "sk-mineru-token-001"
-    - "sk-admin-token-001"  # 管理员 token（可访问所有端点）
+    - "sk-5f8b839908d14561590b70227c72ca86"
+
 
 # =============================================
 # 请求队列配置 - 差异化策略
@@ -60,22 +57,20 @@ services:
     base_url: "http://127.0.0.1:8091"
     timeout_seconds: 60
     max_retries: 3
-    python_path: "/home/tiger/anaconda3/envs/vllm/bin/python"  # vLLM 环境的 Python
     models:
       - id: "unsloth/Qwen3-Embedding-0.6B"
-        path: "/path/to/Qwen3-Embedding-0.6B"
+        path: "~/.cache/modelscope/hub/models/unsloth/Qwen3-Embedding-0.6B"
         device: "cpu"       # cpu 或 cuda
         launch_script: "python embedding_server.py --model-path {path} --device {device}"
 
   asr:
     enabled: true
     base_url: "http://127.0.0.1:8092"
-    timeout_seconds: 300
+    timeout_seconds: 1800
     max_retries: 2
-    python_path: "/home/tiger/anaconda3/envs/vllm/bin/python"  # vLLM 环境的 Python
     models:
       - id: "Qwen/Qwen3-ASR-1.7B"
-        path: "/path/to/Qwen3-ASR-1.7B"
+        path: "~/.cache/modelscope/hub/models/Qwen/Qwen3-ASR-1.7B"
         gpu_memory_utilization: 0.9
         max_model_len: 32768
         launch_script: "python asr_server.py --model-path {path} --gpu-memory-utilization {gpu_memory_utilization}"
@@ -85,20 +80,17 @@ services:
     base_url: "http://127.0.0.1:8093"
     timeout_seconds: 120
     max_retries: 3
-    python_path: "/home/tiger/anaconda3/envs/vllm/bin/python"  # vLLM 环境的 Python
     models:
       - id: "Qwen/Qwen3-Reranker-0.6B"
-        path: "/path/to/Qwen3-Reranker-0.6B"
+        path: "~/.cache/modelscope/hub/models/Qwen/Qwen3-Reranker-0.6B"
         device: "cpu"       # cpu 或 cuda
         launch_script: "python reranker_server.py --model-path {path} --device {device}"
 
   mineru:
     enabled: true
     base_url: "http://127.0.0.1:8094"
-    timeout_seconds: 600
+    timeout_seconds: 1800
     max_retries: 1
-    # MinerU 使用独立的 conda 环境（与 vLLM 环境 Python 版本不兼容）
-    python_path: "/home/tiger/anaconda3/envs/mineru/bin/python"  # MinerU 环境的 Python
     working_directory: ""   # 空表示使用脚本所在目录
     # 传递到 MinerU 的参数
     config:

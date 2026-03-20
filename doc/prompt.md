@@ -88,3 +88,33 @@ reranker 模型使用显存太多了，帮我写一个CPU版本的server
 
 
 你帮我调试一下 conda 的 pi-llm-server 这个环境是否还缺包。运行mineru服务的命令是： ./scripts/mineru_server.sh --python-path /home/tiger/anaconda3/envs/pi-llm-server/bin/python  测试PDF解析的命令是： python scripts/mineru_client.py data/InfoLOD.pdf results/InfoLOD.zip 运行的日志是 /home/bushuhui/.cache/pi-llm-server/logs/mineru.log 。需要运行了PDF解析的程序，mineru才开始运行，才能发现问题，可以通过log文件发现问题。你帮我把问题都解决完，把缺失的包写入到 doc/requirements_pi_llm_server.txt
+
+
+
+## 2026-03-20
+
+配置文件 examples/config.example.yaml 里面的模型需要改成 ~/.cache 开头的路径，可以参考 scripts 里面的模型路径写法，把正确的路径写入示例配置。
+
+
+配置文件 examples/config.example.yaml 中， python_path 也改成 ~/anaconda3/envs/pi-llm-server/bin/python 。 读取配置和使用这个配置的程序都对于的改一下
+
+
+你帮我仔细检查一下是不是 pi_llm_server/cli.py 只是启动统一网关，后台的多个服务的启动使用 scripts/service_manager.py 来启动？ 如果在这个目录外面想一次把后台服务、统一网关都启动起来，使用这样的命令 python -m pi_llm_server ，是不是把 scripts/service_manager.py 放在 pi_llm_server/ 目录比较合适？scripts目录里面其他的程序和脚本放在哪个目录比较合适？先不写代码、改动，先把方案想清楚
+
+
+目前已经把 conda 的环境都集成到了一个，名字是 pi-llm-server ，因此不在需要 examples/config.example.yaml 配置文件中的 python_path 设置项，可以把这个设置项都去掉；把所有用到这个配置项的代码里面相关的内容也去掉。
+
+你帮我把 doc/requirements_pi_llm_server.txt 里面的包信息更新到 pyproject.toml
+
+
+你帮我完善一下项目的 README.md ，主要包括如下部分：
+1. 项目目的：目前阿里云等的coding plan提供里大模型的API，但是并未提供 embedding, rerank, asr, ocr 等API。这些模型一般比较小，可以在本地部署，这样响应速度更快。这个项目就是把多种服务统一管理，给OpenClaw，Claude Code等提供服务。
+2. 项目安装：把安装的方法说明一下；模型的下载（可以2参考 doc/note.md 里面的模型下载部分）
+3. 使用方法：如何启动后台服务和统一网关；配置文件
+4. 关联项目： vllm, LocalAI 等相关项目的关系
+
+
+帮我完善一下后台服务的说明文档 doc/README_services.md 。主要集中在  embedding, rerank, asr, ocr 等后台服务程序的说明，其他不相关的可以删除。需要注意项目的目录做了比较大的改动，需要把之前说明里面的错误的路径等修改正确。
+
+
+帮我更新一下 CHANGELOG.md ，把还未记录到这个文件的改动都记录到这个文件

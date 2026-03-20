@@ -131,12 +131,23 @@ def main():
 
     # 启动服务
     logger.info(f"启动服务：http://{host}:{port}")
+
+    # 当 workers > 1 时，uvicorn 要求传递 import string 而不是 app 对象
+    # 但多 worker 模式下，每个 worker 会重新导入模块，无法共享 config_manager
+    # 因此建议生产环境使用反向代理（如 nginx）实现多进程，而非 uvicorn workers
+    workers = config_manager.config.server.workers
+    if workers > 1:
+        logger.warning(f"多 worker 模式 ({workers}) 下配置管理器无法在 worker 间共享，建议使用反向代理实现多进程。")
+        logger.warning("临时使用单 worker 模式启动，如需多 worker 请使用 nginx 等反向代理")
+        workers = 1  # 临时降级为单 worker
+
+    # 单 worker 模式，直接传递 app 对象
     uvicorn.run(
         app,
         host=host,
         port=port,
         log_level=config_manager.config.server.log_level,
-        workers=config_manager.config.server.workers,
+        workers=workers,
     )
 
 

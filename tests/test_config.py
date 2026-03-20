@@ -25,7 +25,7 @@ class TestConfigManager:
         config = ConfigManager(str(EXAMPLE_CONFIG))
         assert config.auth.enabled is True
         assert len(config.auth.tokens) > 0
-        assert "sk-admin-token-001" in config.auth.tokens
+        assert "sk-5f8b839908d14561590b70227c72ca86" in config.auth.tokens
 
     def test_queue_config(self):
         """测试队列配置"""
@@ -78,7 +78,7 @@ class TestConfigManager:
         """测试 Token 验证"""
         config = ConfigManager(str(EXAMPLE_CONFIG))
         # 有效 token
-        assert config.validate_token("sk-admin-token-001", "/v1/embeddings")
+        assert config.validate_token("sk-5f8b839908d14561590b70227c72ca86", "/v1/embeddings")
         # 无效 token
         assert not config.validate_token("invalid-token", "/v1/embeddings")
 
@@ -103,3 +103,45 @@ class TestConfigModels:
         assert cfg.base_url == "http://localhost:8000"
         assert cfg.timeout_seconds == 300
         assert cfg.max_retries == 3
+
+    def test_model_path_resolution(self):
+        """测试模型路径解析（~ 展开）"""
+        from pi_llm_server.config import ModelConfig
+        import os
+
+        # 测试 ~ 路径解析
+        cfg = ModelConfig(
+            id="test/model",
+            path="~/.cache/modelscope/hub/models/test"
+        )
+        expected_path = os.path.expanduser("~/.cache/modelscope/hub/models/test")
+        assert cfg.path == expected_path
+
+    def test_model_path_with_env(self):
+        """测试模型路径环境变量解析"""
+        from pi_llm_server.config import ModelConfig
+        import os
+
+        # 设置环境变量
+        os.environ["TEST_MODEL_PATH"] = "/tmp/test_model"
+
+        # 测试环境变量路径解析
+        cfg = ModelConfig(
+            id="test/model",
+            path="$TEST_MODEL_PATH/model"
+        )
+        assert cfg.path == "/tmp/test_model/model"
+
+    def test_model_config_from_yaml(self):
+        """测试从 YAML 配置加载模型路径"""
+        config = ConfigManager(str(EXAMPLE_CONFIG))
+
+        # 检查 embedding 模型路径
+        embedding_cfg = config.get_service_config("embedding")
+        assert embedding_cfg is not None
+        assert len(embedding_cfg.models) > 0
+
+        model = embedding_cfg.models[0]
+        # 验证路径已经被解析（不包含 ~）
+        assert "~" not in model.path
+        assert "/.cache/modelscope" in model.path or ".cache/modelscope" in model.path

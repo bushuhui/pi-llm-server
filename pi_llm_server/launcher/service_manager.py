@@ -40,10 +40,11 @@ DEFAULT_CONFIG_DIR = Path.home() / ".config" / "pi-llm-server"
 DEFAULT_CONFIG_FILE = DEFAULT_CONFIG_DIR / "config.yaml"
 
 # 项目根目录（用于查找示例配置文件）
-PROJECT_ROOT = Path(__file__).parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 EXAMPLE_CONFIG_FILE = PROJECT_ROOT / "examples" / "config.example.yaml"
 
 # 服务配置（默认值，可从配置文件覆盖）
+# 只包含后台子服务，不包含 gateway
 SERVICE_CONFIG = {
     'embedding': {
         'script': 'embedding_server.py',
@@ -64,11 +65,6 @@ SERVICE_CONFIG = {
         'script': 'mineru_server.sh',
         'port': 8094,
         'name': 'MinerU Server',
-    },
-    'gateway': {
-        'script': None,  # 使用 python -m pi_llm_server
-        'port': 8090,
-        'name': 'PI-LLM Gateway',
     },
 }
 
@@ -136,12 +132,13 @@ def get_service_config(service_name: str, config: Dict[str, Any]) -> Dict[str, A
         mineru_config = service_cfg.get('config', {})
         merged['vram'] = mineru_config.get('vram', '9000')
         merged['model_source'] = mineru_config.get('model_source', 'modelscope')
-        merged['python_path'] = service_cfg.get('python_path', '')
         merged['working_directory'] = service_cfg.get('working_directory', str(Path(__file__).parent))
 
-    # 其他服务的 python_path 配置
-    if 'python_path' in service_cfg:
-        merged['python_path'] = service_cfg['python_path']
+    # 解析模型路径（展开 ~ 和环境变量）
+    if 'models' in service_cfg:
+        for model in service_cfg['models']:
+            if 'path' in model:
+                model['path'] = os.path.expanduser(os.path.expandvars(model['path']))
 
     return merged
 
@@ -228,19 +225,8 @@ def start_service(service_name: str, background: bool = True, config: Dict[str, 
     print(f"启动 {service_config['name']}...", end=" ")
 
     try:
-        if service_name == 'gateway':
-            # 网关使用 python -m pi_llm_server 启动，传递配置文件路径
-            # 确保配置文件存在
-            ensure_config_exists()
-            cmd = [sys.executable, '-m', 'pi_llm_server', '--config', str(DEFAULT_CONFIG_FILE)]
-
-        elif service_config['script'].endswith('.sh'):
+        if service_config['script'].endswith('.sh'):
             # Shell 脚本（MinerU）- 传递命令行参数
-            python_path = service_config.get('python_path', '')
-            if not python_path:
-                print(f"✗ {service_config['name']} 需要在配置文件中指定 python_path")
-                return False
-
             working_dir = service_config.get('working_directory', str(script_dir))
 
             cmd = [
@@ -249,17 +235,14 @@ def start_service(service_name: str, background: bool = True, config: Dict[str, 
                 '--port', str(service_config['port']),
                 '--vram', str(service_config.get('vram', '9000')),
                 '--model-source', str(service_config.get('model_source', 'modelscope')),
-                '--python-path', python_path,
+                '--python-path', sys.executable,  # 使用当前环境的 Python
             ]
             # 切换到工作目录
             script_dir = Path(working_dir)
 
         else:
-            # Python 脚本（Embedding/ASR/Reranker）- 从配置获取参数
-            python_path = service_config.get('python_path', sys.executable)
-
-            # 构建命令行参数
-            cmd = [python_path, script_dir / service_config['script']]
+            # Python 脚本（Embedding/ASR/Reranker）- 使用当前环境的 Python
+            cmd = [sys.executable, script_dir / service_config['script']]
 
             # 根据服务类型添加特定参数
             if service_name == 'embedding':
@@ -267,7 +250,9 @@ def start_service(service_name: str, background: bool = True, config: Dict[str, 
                 models = config.get('services', {}).get('embedding', {}).get('models', [])
                 if models:
                     model = models[0]
-                    cmd.extend(['--model-path', model.get('path', '')])
+                    # 解析模型路径（展开 ~ 和环境变量）
+                    model_path = os.path.expanduser(os.path.expandvars(model.get('path', '')))
+                    cmd.extend(['--model-path', model_path])
                     cmd.extend(['--device', model.get('device', 'cpu')])
 
             elif service_name == 'asr':
@@ -275,15 +260,18 @@ def start_service(service_name: str, background: bool = True, config: Dict[str, 
                 models = config.get('services', {}).get('asr', {}).get('models', [])
                 if models:
                     model = models[0]
-                    cmd.extend(['--model-path', model.get('path', '')])
-                    cmd.extend(['--gpu-memory-utilization', str(model.get('gpu_memory_utilization', 0.9))])
+                    # 解析模型路径（展开 ~ 和环境变量）
+                    model_path = os.path.expanduser(os.path.expandvars(model.get('path', '')))
+                    cmd.extend(['--model-path', model_path])
 
             elif service_name == 'reranker':
                 # Reranker 参数从配置读取
                 models = config.get('services', {}).get('reranker', {}).get('models', [])
                 if models:
                     model = models[0]
-                    cmd.extend(['--model-path', model.get('path', '')])
+                    # 解析模型路径（展开 ~ 和环境变量）
+                    model_path = os.path.expanduser(os.path.expandvars(model.get('path', '')))
+                    cmd.extend(['--model-path', model_path])
                     cmd.extend(['--device', model.get('device', 'cpu')])
 
         if background:
@@ -296,8 +284,9 @@ def start_service(service_name: str, background: bool = True, config: Dict[str, 
                     cwd=str(script_dir),
                     start_new_session=True,
                 )
-            # 写入 PID 文件
-            pid_file.write_text(str(proc.pid))
+            # 写入 PID 文件（MinerU 除外，它有自己的 PID 管理）
+            if service_name != 'mineru':
+                pid_file.write_text(str(proc.pid))
             print(f"进程 ID: {proc.pid}")
         else:
             # 前台运行
@@ -381,7 +370,7 @@ def restart_service(service_name: str, config: Dict[str, Any] = None) -> bool:
 def show_status():
     """显示所有服务状态"""
     print("=" * 60)
-    print("PI-LLM-Server 服务状态")
+    print("PI-LLM-Server 后台服务状态")
     print("=" * 60)
     print()
 
@@ -402,49 +391,43 @@ def show_status():
     print(f"配置文件：{config_path}")
 
 
-def start_all(with_gateway: bool = False):
-    """启动所有服务"""
+def start_all():
+    """启动所有后台服务"""
     config = load_config()
 
-    print("正在启动所有服务...")
+    print("正在启动所有后台服务...")
     print()
 
     # 启动子服务
     for name in ['embedding', 'asr', 'reranker', 'mineru']:
         start_service(name, config=config)
 
-    # 启动网关
-    if with_gateway:
-        print()
-        start_service('gateway', config=config)
-
 
 def stop_all():
-    """停止所有服务"""
-    print("正在停止所有服务...")
+    """停止所有后台服务"""
+    print("正在停止所有后台服务...")
     print()
 
-    # 先停止网关
-    stop_service('gateway')
-
-    # 停止子服务
-    for name in ['embedding', 'asr', 'reranker', 'mineru']:
+    # 停止子服务（按依赖顺序：先启动的后停止）
+    for name in ['mineru', 'reranker', 'asr', 'embedding']:
         stop_service(name)
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="PI-LLM-Server 服务管理工具",
+        description="PI-LLM-Server 后台服务管理工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  %(prog)s start --all           # 启动所有子服务
-  %(prog)s start --with-gateway  # 启动所有服务（包括网关）
+  %(prog)s start --all           # 启动所有后台服务
   %(prog)s start embedding       # 启动单个服务
   %(prog)s stop --all            # 停止所有服务
   %(prog)s stop embedding        # 停止单个服务
   %(prog)s restart embedding     # 重启服务
   %(prog)s status                # 查看服务状态
+
+注意：本工具只管理后台子服务 (embedding/asr/reranker/mineru)，
+      网关服务请使用 python -m pi_llm_server 启动
         """
     )
 
@@ -452,9 +435,8 @@ def main():
 
     # start 命令
     start_parser = subparsers.add_parser('start', help='启动服务')
-    start_parser.add_argument('service', nargs='?', help='服务名称 (embedding/asr/reranker/mineru/gateway)')
-    start_parser.add_argument('--all', action='store_true', help='启动所有子服务')
-    start_parser.add_argument('--with-gateway', action='store_true', help='启动所有服务（包括网关）')
+    start_parser.add_argument('service', nargs='?', help='服务名称 (embedding/asr/reranker/mineru)')
+    start_parser.add_argument('--all', action='store_true', help='启动所有后台服务')
 
     # stop 命令
     stop_parser = subparsers.add_parser('stop', help='停止服务')
@@ -472,13 +454,11 @@ def main():
 
     if args.command == 'start':
         if args.all:
-            start_all(with_gateway=False)
-        elif args.with_gateway:
-            start_all(with_gateway=True)
+            start_all()
         elif args.service:
             start_service(args.service)
         else:
-            start_all(with_gateway=False)
+            start_all()
 
     elif args.command == 'stop':
         if args.all:
