@@ -5,7 +5,61 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [未发布]
+## [未发布] - 2026-03-20
+
+### Added
+- **文档完善**:
+  - 新增 `doc/README_services.md` 后台服务详细文档
+  - 更新 `README.md` 添加项目目的、模型下载、使用方法、关联项目说明
+  - 新增 `doc/note.md` 开发笔记
+
+- **依赖管理**:
+  - 新增 `doc/requirements_vllm.txt` vLLM 服务依赖配置
+  - 新增 `doc/requirements_mineru.txt` MinerU 服务依赖配置
+  - 完善 `pyproject.toml` 依赖分组 (vllm/embedding/reranker/asr/mineru/models/api/monitoring/utils/dev/mcp)
+
+- **测试增强**:
+  - 新增 `tests/test_cli_launch.py` CLI 启动测试
+  - 新增 `tests/test_full_stack.py` 全栈集成测试
+
+### Changed
+- **目录结构重构**:
+  - 迁移脚本从 `scripts/` 到 `pi_llm_server/launcher/` (服务器端)
+  - 迁移脚本从 `scripts/` 到 `pi_llm_server/clients/` (客户端)
+  - 保留 `scripts/` 中的 `service_manager.py` 作为兼容入口
+
+- **启动器模块** (`pi_llm_server/launcher/`):
+  - `embedding_server.py` - Embedding 服务启动器
+  - `asr_server.py` - ASR 语音识别服务启动器
+  - `reranker_server.py` - Reranker 服务启动器
+  - `service_manager.py` - 统一服务管理工具
+
+- **客户端模块** (`pi_llm_server/clients/`):
+  - `embedding_client.py` - Embedding 客户端工具
+  - `asr_client.py` - ASR 客户端工具
+  - `reranker_client.py` - Reranker 客户端工具
+  - `mineru_client.py` - MinerU 客户端工具
+
+- **核心模块增强**:
+  - `pi_llm_server/__main__.py` - 增强命令行参数支持
+  - `pi_llm_server/cli.py` - 优化配置加载逻辑
+  - `pi_llm_server/config.py` - 改进配置验证
+
+- **配置文件**:
+  - 更新 `examples/config.example.yaml` 精简配置项
+  - 移除不再需要的 `scripts/start_all_services.sh`
+
+### Removed
+- 删除旧的 `scripts/` 目录下冗余脚本
+- 移除 `scripts/pi-llm-server.service` systemd 服务文件
+
+### Fixed
+- 修正服务启动脚本路径引用
+- 修复客户端工具默认 URL 配置
+
+---
+
+## [1.1.0] - 2026-03-20
 
 ### Added
 - 完整的 Python 包管理结构 (`pyproject.toml`)
@@ -111,6 +165,7 @@
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| 1.1.0 | 2026-03-20 | 目录结构重构，服务脚本迁移到 launcher/clients |
 | 1.0.0 | 2026-03-19 | 标准 Python 包结构重构完成 |
 | 0.1.0 | 2026-03-17 | 初始版本发布 |
 
@@ -119,10 +174,18 @@
 ## 提交统计
 
 ```
-Author: bushuhui (4 commits)
+Author: bushuhui
 
 Commit 日期              信息
 ------ ----------------- ------------------------------------------
+5cabba9  2026-03-20      Update pyproject.toml with comprehensive dependency groups
+b890704  2026-03-20      update prompt
+2b34e96  2026-03-20      Improve scripts
+540fc68  2026-03-20      Update scripts/service_manager.py
+5877b7d  2026-03-20      Merge branch 'master' of gitee.com:pi-lab/pi-llm-server
+c490522  2026-03-20      Improve requirements_mineru.txt requirements_vllm.txt
+e293ea1  2026-03-20      add LICENSE.
+031effa  2026-03-19      First project refresh
 f23bf93  2026-03-19      Finish project structure design
 2168e3a  2026-03-18      Improve project design doc
 6e94761  2026-03-17      update doc
@@ -131,4 +194,4 @@ e189aab  2026-03-17      First version
 
 ---
 
-*最后更新: 2026-03-19*
+*最后更新：2026-03-20*
