@@ -80,6 +80,7 @@ DEFAULT_MODEL_PATH = os.path.expanduser("~/.cache/modelscope/hub/models/Qwen/Qwe
 asr_model = None
 vad_model = None
 model_path_global = DEFAULT_MODEL_PATH
+model_id_global = "Qwen/Qwen3-ASR-1.7B"  # 模型 ID，用于 /v1/models 端点
 
 # 音频时长阈值（秒）：超过此时长使用 VAD 分割
 SHORT_AUDIO_THRESHOLD = 120  # 2 分钟
@@ -579,6 +580,24 @@ async def transcribe(
         raise HTTPException(status_code=500, detail=f"转写失败：{str(e)}")
 
 
+@app.get("/v1/models")
+async def list_models():
+    """
+    列出可用模型
+    """
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": model_id_global,
+                "object": "model",
+                "owned_by": "local",
+                "service": "asr"
+            }
+        ]
+    }
+
+
 @app.get("/")
 async def root():
     """根路径"""
@@ -587,6 +606,7 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "health": "GET /health",
+            "models": "GET /v1/models",
             "transcribe": "POST /v1/audio/transcriptions",
             "docs": "GET /docs"
         }
@@ -674,9 +694,22 @@ def main():
 
     args = parser.parse_args()
 
-    # 更新全局模型路径
-    global model_path_global
+    # 从模型路径推断模型 ID（取路径最后两部分，如 Qwen/Qwen3-ASR-1.7B）
+    def extract_model_id(model_path: str) -> str:
+        """从模型路径提取模型 ID"""
+        # 移除末尾的 /
+        path = model_path.rstrip('/')
+        # 取最后两部分作为 ID
+        parts = path.split(os.sep)
+        if len(parts) >= 2:
+            return f"{parts[-2]}/{parts[-1]}"
+        # 如果路径太短，返回整个路径
+        return os.path.basename(path)
+
+    # 更新全局模型路径和模型 ID
+    global model_path_global, model_id_global
     model_path_global = args.model_path
+    model_id_global = extract_model_id(args.model_path)
 
     # 检查依赖
     if not check_dependencies():
