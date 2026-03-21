@@ -41,11 +41,18 @@ def get_status():
     return response.json()
 
 
-def generate_embedding(text: str, model: str = "unsloth/Qwen3-Embedding-0.6B"):
-    """生成文本 embedding"""
+def generate_embedding(text: str, model: str = "unsloth/Qwen3-Embedding-0.6B", encoding_format: str = "float"):
+    """生成文本 embedding
+
+    Args:
+        text: 输入文本
+        model: 模型名称
+        encoding_format: 编码格式，支持 "float" 或 "base64"
+    """
     payload = {
         "model": model,
         "input": [text],
+        "encoding_format": encoding_format,
     }
     response = httpx.post(
         f"{BASE_URL}/v1/embeddings",
@@ -54,16 +61,38 @@ def generate_embedding(text: str, model: str = "unsloth/Qwen3-Embedding-0.6B"):
         timeout=60,
     )
     result = response.json()
-    print(f"Embedding 维度：{len(result['data'][0]['embedding'])}")
+
+    if encoding_format == "base64":
+        # base64 格式，解码并显示预览
+        import base64
+        import struct
+        embedding_data = result['data'][0]['embedding']
+        decoded = base64.b64decode(embedding_data)
+        float_count = len(decoded) // 4  # float32 占 4 字节
+        floats = struct.unpack(f'{float_count}f', decoded)
+        print(f"Embedding 维度：{len(floats)} (base64 编码)")
+        print(f"向量预览 (前 10 个值): {floats[:10]}")
+    else:
+        # float 格式
+        print(f"Embedding 维度：{len(result['data'][0]['embedding'])}")
+
     return result
 
 
-def rerank_documents(query: str, documents: list):
-    """对文档进行重排序"""
+def rerank_documents(query: str, documents: list, encoding_format: str = None):
+    """对文档进行重排序
+
+    Args:
+        query: 查询文本
+        documents: 文档列表
+        encoding_format: 编码格式，支持 "float" 或 "base64" (可选，保留用于未来扩展)
+    """
     payload = {
         "query": query,
         "documents": documents,
     }
+    if encoding_format:
+        payload["encoding_format"] = encoding_format
     response = httpx.post(
         f"{BASE_URL}/v1/rerank",
         json=payload,

@@ -118,3 +118,24 @@ reranker 模型使用显存太多了，帮我写一个CPU版本的server
 
 
 帮我更新一下 CHANGELOG.md ，把还未记录到这个文件的改动都记录到这个文件
+
+
+## 2026-03-21
+
+根据 OpenAI 官方 API 文档，encoding_format 的默认值是 float，不是 base64。 OpenAI API 标准行为，默认行为：
+  - 不指定 encoding_format 时，API 返回 float 数组（JSON 格式）
+  - 可选值：float | base64
+
+  官方文档说明：
+  {
+    "encoding_format": "float"  // 默认值
+  }
+
+  OpenAI SDK 的特殊处理。但是 OpenAI SDK（Node.js/Python）做了一个非标准的优化：
+  1. SDK 在请求时自动添加 encoding_format: "base64"（为了性能，减少网络传输）
+  2. SDK 在响应时自动解码 base64 为 float 数组
+
+  这个优化在 PR https://github.com/openai/openai-node/pull/1312 中被引入。
+
+请阅读OpenAI的说明，增加base64的支持给 embedding (pi_llm_server/launcher/embedding_server.py , pi_llm_server/services/embedding.py, pi_llm_server/clients/embedding_client.py) , reranker (pi_llm_server/launcher/reranker_server.py , pi_llm_server/clients/reranker_client.py , pi_llm_server/services/reranker.py ) ，以及示例程序 examples/basic_usage.py
+

@@ -115,7 +115,7 @@ def get_server_info(base_url: str):
 
 # ==================== 单个文本 Embedding ====================
 
-def create_embedding(base_url: str, model: str, text: str):
+def create_embedding(base_url: str, model: str, text: str, encoding_format: str = "float"):
     """
     使用 Embedding 模型生成文本嵌入向量
 
@@ -123,18 +123,21 @@ def create_embedding(base_url: str, model: str, text: str):
         base_url: vllm 服务地址
         model: 模型名称
         text: 输入文本
+        encoding_format: 编码格式：float | base64 (可选，默认 float)
     """
     logger.info("=" * 60)
     logger.info(f"文本嵌入 - 使用模型：{model}")
     logger.info("=" * 60)
     logger.info(f"输入文本：{text[:100]}{'...' if len(text) > 100 else ''}")
+    logger.info(f"编码格式：{encoding_format}")
     logger.info("正在计算嵌入向量...")
 
     url = f"{base_url}/v1/embeddings"
 
     payload = {
         "model": model,
-        "input": text
+        "input": text,
+        "encoding_format": encoding_format,
     }
 
     try:
@@ -420,6 +423,8 @@ def main():
     embed_parser.add_argument('--model', '-m', default='unsloth/Qwen3-Embedding-0.6B',
                               help='Embedding 模型名称 (默认：unsloth/Qwen3-Embedding-0.6B)')
     embed_parser.add_argument('--text', '-t', required=True, help='输入文本')
+    embed_parser.add_argument('--encoding-format', '-e', default='float',
+                              help='编码格式：float | base64 (默认：float)')
 
     # embed-test 命令 (批量测试)
     embed_test_parser = subparsers.add_parser('embed-test', help='Embedding 批量测试 (相似度矩阵)')
@@ -443,7 +448,7 @@ def main():
         get_server_info(args.base_url)
 
     elif args.command == 'embed':
-        create_embedding(args.base_url, args.model, args.text)
+        create_embedding(args.base_url, args.model, args.text, args.encoding_format)
 
     elif args.command == 'embed-test':
         test_embedding_batch(args.base_url, args.model)

@@ -26,6 +26,7 @@ class RerankRequest(BaseModel):
     documents: List[str] = Field(..., description="文档列表")
     top_n: Optional[int] = Field(default=None, ge=1, le=100, description="返回前 N 个结果")
     model: Optional[str] = Field(default=None, description="模型 ID")
+    encoding_format: Optional[str] = Field(default=None, description="编码格式：float | base64")
 
 
 class RerankResult(BaseModel):
@@ -79,6 +80,7 @@ class RerankerService:
         documents: List[str],
         top_n: Optional[int] = None,
         model: Optional[str] = None,
+        encoding_format: Optional[str] = None,
     ) -> dict:
         """
         调用 reranker 服务对文档进行相关性排序
@@ -88,6 +90,7 @@ class RerankerService:
             documents: 文档列表
             top_n: 返回前 N 个结果 (可选)
             model: 模型 ID (可选)
+            encoding_format: 编码格式：float | base64 (可选)
 
         Returns:
             dict: rerank 响应
@@ -103,6 +106,8 @@ class RerankerService:
             request_data["top_n"] = top_n
         if model:
             request_data["model"] = model
+        if encoding_format:
+            request_data["encoding_format"] = encoding_format
 
         for attempt in range(self.max_retries):
             try:

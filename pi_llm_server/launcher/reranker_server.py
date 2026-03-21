@@ -105,6 +105,7 @@ class RerankRequest(BaseModel):
     documents: List[str]
     top_n: Optional[int] = None
     instruction: Optional[str] = None
+    encoding_format: Optional[str] = None  # 保留用于未来扩展
 
 
 class RerankResult(BaseModel):

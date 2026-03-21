@@ -29,6 +29,8 @@ import sys
 import argparse
 import logging
 import time
+import base64
+import struct
 from typing import List, Optional, Union
 
 import torch
@@ -101,7 +103,7 @@ DEFAULT_PORT = 8091
 class EmbeddingRequest(BaseModel):
     input: Union[str, List[str]]
     model: str = ""
-    encoding_format: Optional[str] = "float"
+    encoding_format: Optional[str] = "float"  # "float" | "base64"
 
 
 class EmbeddingData(BaseModel):
@@ -248,14 +250,26 @@ async def create_embeddings(request: EmbeddingRequest):
         tokenizer = model.tokenizer
         total_tokens = sum(len(tokenizer.encode(t)) for t in input_texts)
 
-        # 构建响应
-        data = [
-            EmbeddingData(
-                embedding=emb.tolist() if hasattr(emb, 'tolist') else list(emb),
-                index=i
-            )
-            for i, emb in enumerate(embeddings)
-        ]
+        # 构建响应 - 支持 float 和 base64 格式
+        data = []
+        for i, emb in enumerate(embeddings):
+            emb_list = emb.tolist() if hasattr(emb, 'tolist') else list(emb)
+
+            if request.encoding_format == "base64":
+                # 将 float 数组编码为 base64
+                # 使用 float32 打包
+                packed = struct.pack(f'{len(emb_list)}f', *emb_list)
+                encoded = base64.b64encode(packed).decode('ascii')
+                data.append(EmbeddingData(
+                    embedding=encoded,
+                    index=i
+                ))
+            else:
+                # 默认 float 格式
+                data.append(EmbeddingData(
+                    embedding=emb_list,
+                    index=i
+                ))
 
         return EmbeddingResponse(
             data=data,

@@ -124,7 +124,7 @@ def get_model_name(base_url: str, model: str = None) -> str:
     return ''
 
 
-def rerank_single_pair(base_url: str, model: str, query: str, document: str, instruction: str = None):
+def rerank_single_pair(base_url: str, model: str, query: str, document: str, instruction: str = None, encoding_format: str = None):
     """
     对单个查询 - 文档对进行相关性评分
 
@@ -134,6 +134,7 @@ def rerank_single_pair(base_url: str, model: str, query: str, document: str, ins
         query: 查询文本
         document: 文档文本
         instruction: 任务指令 (可选)
+        encoding_format: 编码格式：float | base64 (可选，保留用于未来扩展)
     """
     # 自动获取模型名称
     model_name = get_model_name(base_url, model)
@@ -155,6 +156,8 @@ def rerank_single_pair(base_url: str, model: str, query: str, document: str, ins
 
     if instruction:
         payload["instruction"] = instruction
+    if encoding_format:
+        payload["encoding_format"] = encoding_format
 
     try:
         response = requests.post(url, json=payload, timeout=60)
@@ -410,6 +413,8 @@ def main():
     rerank_parser.add_argument('--query', '-q', required=True, help='查询文本')
     rerank_parser.add_argument('--document', '-d', required=True, help='文档文本')
     rerank_parser.add_argument('--instruction', '-i', default=None, help='任务指令 (可选)')
+    rerank_parser.add_argument('--encoding-format', '-e', default=None,
+                               help='编码格式：float | base64 (可选，保留用于未来扩展)')
 
     # rerank-batch 命令 (批量测试)
     rerank_batch_parser = subparsers.add_parser('rerank-batch', help='批量测试相关性评分')
@@ -436,7 +441,7 @@ def main():
         get_server_info(args.base_url)
 
     elif args.command == 'rerank':
-        rerank_single_pair(args.base_url, args.model, args.query, args.document, args.instruction)
+        rerank_single_pair(args.base_url, args.model, args.query, args.document, args.instruction, args.encoding_format)
 
     elif args.command == 'rerank-batch':
         rerank_batch(args.base_url, args.model, args.instruction)
