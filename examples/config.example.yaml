@@ -32,7 +32,7 @@ queue:
   # 按服务类型差异化配置
   services:
     embedding:
-      max_concurrent: 4      # CPU 多核并行，可同时处理多个请求
+      max_concurrent: 1      # GPU 推理，顺序处理避免显存溢出
       max_size: 200
       timeout_seconds: 60
     reranker:
@@ -60,7 +60,7 @@ services:
     models:
       - id: "unsloth/Qwen3-Embedding-0.6B"
         path: "~/.cache/modelscope/hub/models/unsloth/Qwen3-Embedding-0.6B"
-        device: "cpu"       # cpu 或 cuda
+        device: "cuda"       # cpu 或 cuda
         launch_script: "python embedding_server.py --model-path {path} --device {device}"
 
   asr:

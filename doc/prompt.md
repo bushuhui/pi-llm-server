@@ -139,3 +139,9 @@ reranker 模型使用显存太多了，帮我写一个CPU版本的server
 
 请阅读OpenAI的说明，增加base64的支持给 embedding (pi_llm_server/launcher/embedding_server.py , pi_llm_server/services/embedding.py, pi_llm_server/clients/embedding_client.py) , reranker (pi_llm_server/launcher/reranker_server.py , pi_llm_server/clients/reranker_client.py , pi_llm_server/services/reranker.py ) ，以及示例程序 examples/basic_usage.py
 
+
+
+
+目前embedding默认是CPU运行，比帮我用比较长的文本，测试一下CPU运行 embedding的时间。
+然后，改成GPU运行，相同的测试数据，记录一下GPU运行 embedding的时间。
+每次测试，可以运行20次，保证测试的时间不受其他因素影响
