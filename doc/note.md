@@ -151,7 +151,7 @@ python -m build
 twine upload dist/*
 
 # 本地安装
-pip install --upgrade -e ".[all]
+pip install --upgrade -e ".[all]"
 # pip安装
 pip install pi-llm-server[all]
 ```
