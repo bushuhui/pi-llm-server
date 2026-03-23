@@ -145,3 +145,33 @@ reranker 模型使用显存太多了，帮我写一个CPU版本的server
 目前embedding默认是CPU运行，比帮我用比较长的文本，测试一下CPU运行 embedding的时间。
 然后，改成GPU运行，相同的测试数据，记录一下GPU运行 embedding的时间。
 每次测试，可以运行20次，保证测试的时间不受其他因素影响
+
+
+## 2026-03-23
+
+你帮我查一下 examples 目录里面的示例程序和示例配置是不是没有打包进入Python的包，项目配置文件是 pyproject.toml
+
+
+目前的这个项目的可执行，只有统一的网关有一个命令行，
+```
+[project.scripts]                                                 
+# 命令行入口
+pi-llm-server = "pi_llm_server.cli:main"
+```
+
+最好把这个统一的入口程序做成 启动所有后台服务+统一网关 
+```
+# 启动后台服务 + 网关（一站式启动）
+python -m pi_llm_server start-all
+```
+
+
+
+examples 目录打包的时候，需要保持和代码主目录 pi_llm_server 保存相同的路径关系，因为 pi_llm_server/cli.py 程序会根据相对路径关系去找 examples 里面的配置示例
+
+现在 pi_llm_server/cli.py 已经包含了所有的启动代码，是不是可以把 pi_llm_server/__main__.py 里面重复的代码去掉
+
+刚才跟新了 pi_llm_server/examples 目录； pi_llm_server/cli.py 。你仔细阅读代码和项目说明文件 README.md，更新项目说明文件对应最新的代码结构和用法
+
+
+pi_llm_server/__init__.py 里面有版本号， pyproject.toml 这里也有版本号，如何才能一 pyproject.toml 为主，只保留一个版本号，另外一个自动更新？

@@ -36,6 +36,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
 
+# 导入版本号
+from pi_llm_server import __version__
+
 # 尝试导入 transformers
 try:
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -82,7 +85,7 @@ logger = setup_logging("reranker")
 app = FastAPI(
     title="Qwen3-Reranker API",
     description="Qwen3-Reranker 模型 reranker 服务",
-    version="1.0.0"
+    version=__version__
 )
 
 # 全局变量

@@ -106,10 +106,12 @@ async def lifespan(app: FastAPI):
 
 # ============ FastAPI 应用 ============
 
+from pi_llm_server import __version__
+
 app = FastAPI(
     title="PI-LLM Server",
     description="统一 LLM 服务网关 - 集成 Embedding、ASR、Reranker、MinerU 服务",
-    version="1.0.0",
+    version=__version__,
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -171,7 +173,7 @@ async def root():
     """根路径"""
     return {
         "name": "PI-LLM Server",
-        "version": "1.0.0",
+        "version": __version__,
         "description": "统一 LLM 服务网关",
         "docs": "/docs",
         "health": "/health",

@@ -35,6 +35,8 @@ import torch
 import warnings
 warnings.filterwarnings("ignore")
 
+from pi_llm_server import __version__
+
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -390,7 +392,7 @@ def transcribe_audio(
 app = FastAPI(
     title="Qwen3-ASR 语音转写服务",
     description="基于 Qwen3-ASR 模型的长音频转写 API 服务",
-    version="1.0.0"
+    version=__version__
 )
 
 
@@ -603,7 +605,7 @@ async def root():
     """根路径"""
     return {
         "service": "Qwen3-ASR Transcription Service",
-        "version": "1.0.0",
+        "version": __version__,
         "endpoints": {
             "health": "GET /health",
             "models": "GET /v1/models",

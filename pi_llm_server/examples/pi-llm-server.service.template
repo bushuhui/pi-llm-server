@@ -1,0 +1,35 @@
+[Unit]
+Description=PI-LLM Unified Server
+Documentation=https://github.com/bushuhui/pi-llm-server
+After=network.target
+
+[Service]
+Type=simple
+# ===== 需要替换的配置 =====
+User=YOUR_USERNAME
+Group=YOUR_GROUPNAME
+
+# 源码安装模式：设置项目目录
+# WorkingDirectory=/path/to/your/pi-llm-server
+
+# pip 安装模式：不需要 WorkingDirectory
+# ExecStart 会自动使用当前环境的 python
+ExecStart=/path/to/python -m pi_llm_server
+
+# ===== 通用配置 =====
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pi-llm-server
+
+# 资源限制
+LimitNOFILE=65535
+LimitNPROC=4096
+
+# 安全选项
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

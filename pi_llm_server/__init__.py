@@ -5,7 +5,9 @@ PI-LLM-Server - 统一 LLM 服务网关
 提供统一的 API 入口、请求队列、认证管理、健康监控等功能。
 """
 
-__version__ = "1.0.0"
+from importlib.metadata import version
+
+__version__ = version("pi-llm-server")
 __author__ = "PI-Lab Team"
 
 from .config import ConfigManager, Config, ServiceConfig

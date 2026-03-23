@@ -38,6 +38,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
 
+# 导入版本号
+from pi_llm_server import __version__
+
 # 尝试导入 sentence-transformers
 try:
     from sentence_transformers import SentenceTransformer
@@ -84,7 +87,7 @@ logger = setup_logging("embedding")
 app = FastAPI(
     title="Qwen3-Embedding API",
     description="Qwen3-Embedding 模型 embedding 服务",
-    version="1.0.0"
+    version=__version__
 )
 
 # 全局变量

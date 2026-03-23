@@ -14,9 +14,12 @@
 - [快速开始](#快速开始)
 - [模型下载](#模型下载)
 - [使用方法](#使用方法)
+- [命令行工具](#命令行工具)
 - [配置说明](#配置说明)
 - [API 文档](#api-文档)
+- [项目结构](#项目结构)
 - [关联项目](#关联项目)
+- [故障排查](#故障排查)
 
 ---
 
@@ -131,14 +134,21 @@ huggingface-cli download unsloth/Qwen3-Embedding-4B --local-dir ~/.cache/hugging
 
 ### 1. 配置目录结构
 
-首次运行时会自动创建配置文件，或手动创建：
+首次运行时会自动创建配置文件，无需手动复制：
+
+```bash
+# 首次运行时会自动创建配置目录和配置文件
+# 配置文件位置：~/.config/pi-llm-server/config.yaml
+```
+
+如需手动配置，可以从包内复制示例配置：
 
 ```bash
 # 创建配置目录
 mkdir -p ~/.config/pi-llm-server
 
-# 复制示例配置
-cp examples/config.example.yaml ~/.config/pi-llm-server/config.yaml
+# 从已安装的包中复制示例配置（如果自动创建失败）
+cp $(python -c "from pathlib import Path; import pi_llm_server; print(Path(pi_llm_server.__file__).parent / 'examples' / 'config.example.yaml')") ~/.config/pi-llm-server/config.yaml
 ```
 
 ### 2. 编辑配置文件
@@ -172,13 +182,22 @@ services:
 
 ### 3. 启动服务
 
+#### 方式 A: 一站式启动（推荐）
+
 ```bash
-# 启动后台服务 + 网关（一站式启动）
-python -m pi_llm_server start-all
+# 启动所有服务（后台服务 + 统一网关）
+pi-llm-server start-all
+
+# 查看所有服务状态
+pi-llm-server status
+
+# 停止所有服务
+pi-llm-server stop-all
 ```
 
+#### 方式 B: 仅启动统一网关
 
-#### 方式 A: 启动统一网关
+#### 方式 B: 仅启动统一网关
 
 ```bash
 # 使用命令行工具启动网关服务
@@ -191,7 +210,86 @@ pi-llm-server --config ~/.config/pi-llm-server/config.yaml --port 8090
 nohup pi-llm-server > ~/.cache/pi-llm-server/logs/gateway.log 2>&1 &
 ```
 
-#### 方式 B: 启动子服务
+#### 方式 C: 后台服务管理
+
+```bash
+# 启动所有后台服务
+pi-llm-server services start --all
+
+# 查看服务状态
+pi-llm-server services status
+
+# 停止所有后台服务
+pi-llm-server services stop --all
+
+# 单独启动/停止某个服务
+pi-llm-server services start embedding
+pi-llm-server services stop asr
+```
+
+#### 方式 D: 使用 systemd 服务（生产环境推荐）
+
+**自动安装（推荐）**：
+
+```bash
+# 运行自动配置脚本，会检测当前环境并生成合适的配置
+cd pi-llm-server
+bash pi_llm_server/examples/install-service.sh
+```
+
+脚本会自动：
+- 检测当前用户和组
+- 检测 Python/Conda 环境路径
+- 检测项目安装模式（pip 或源码）
+- 生成合适的 service 文件并安装
+
+**手动配置**：
+
+```bash
+# 1. 复制模板文件
+cp pi_llm_server/examples/pi-llm-server.service.template /tmp/pi-llm-server.service
+
+# 2. 编辑模板，替换以下占位符：
+#    - YOUR_USERNAME -> 你的用户名（运行 whoami 获取）
+#    - YOUR_GROUPNAME -> 你的用户组（运行 id -gn 获取）
+#    - /path/to/python -> Python 路径（运行 which python 获取）
+#    - WorkingDirectory（源码模式需要，pip 安装可删除此行）
+nano /tmp/pi-llm-server.service
+
+# 3. 安装到 systemd
+sudo mv /tmp/pi-llm-server.service /etc/systemd/system/pi-llm-server.service
+sudo systemctl daemon-reload
+
+# 4. 管理服务
+sudo systemctl start pi-llm-server
+sudo systemctl enable pi-llm-server
+```
+
+**服务管理命令**：
+
+```bash
+# 启动服务
+sudo systemctl start pi-llm-server
+
+# 设置开机自启
+sudo systemctl enable pi-llm-server
+
+# 查看服务状态
+sudo systemctl status pi-llm-server
+
+# 查看日志
+sudo journalctl -u pi-llm-server -f
+
+# 停止服务
+sudo systemctl stop pi-llm-server
+
+# 卸载服务
+sudo systemctl disable pi-llm-server
+sudo rm /etc/systemd/system/pi-llm-server.service
+sudo systemctl daemon-reload
+```
+
+#### 方式 E: 手动启动子服务（开发调试用）
 
 ```bash
 # Embedding 服务
@@ -206,19 +304,6 @@ python pi_llm_server/launcher/reranker_server.py --model-path ~/.cache/modelscop
 # MinerU 服务
 # 注意：MinerU 需要 GPU 支持，建议使用独立显存（9GB 以上）
 ./mineru_server.sh start --python-path /path/to/python
-```
-
-#### 方式 C: 使用服务管理器
-
-```bash
-# 启动所有服务
-python pi_llm_server/launcher/service_manager.py start --all
-
-# 查看服务状态
-python pi_llm_server/launcher/service_manager.py status
-
-# 停止所有服务
-python pi_llm_server/launcher/service_manager.py stop --all
 ```
 
 ### 4. 验证服务
@@ -241,7 +326,26 @@ curl -X POST http://localhost:8090/v1/embeddings \
 
 ### 5. Python 客户端示例
 
-项目提供了完整的 Python 使用示例 [`examples/basic_usage.py`](examples/basic_usage.py)：
+项目提供了完整的 Python 使用示例 [`pi_llm_server/examples/basic_usage.py`](pi_llm_server/examples/basic_usage.py)：
+
+**主要功能**:
+- 健康检查和服务状态查询
+- 生成 Embedding（支持 float 和 base64 编码格式）
+- 文档重排序（Reranker）
+- 语音转文字（ASR）
+- PDF 解析（MinerU/OCR）
+
+**运行示例**:
+
+```bash
+# 确保服务已启动
+pi-llm-server status
+
+# 运行示例程序
+python pi_llm_server/examples/basic_usage.py
+```
+
+**示例代码结构**:
 
 ```python
 """
@@ -251,6 +355,7 @@ PI-LLM-Server 基本使用示例
 """
 
 import httpx
+import base64
 
 # 服务地址
 BASE_URL = "http://127.0.0.1:8090"
@@ -265,32 +370,18 @@ HEADERS = {
 }
 
 
-def check_health():
-    """检查服务健康状态"""
-    response = httpx.get(f"{BASE_URL}/health")
-    print("健康状态:", response.json())
-    return response.json()
+def generate_embedding(text: str, model: str = "unsloth/Qwen3-Embedding-0.6B", encoding_format: str = "float"):
+    """生成文本 embedding
 
-
-def list_models():
-    """列出所有可用模型"""
-    response = httpx.get(f"{BASE_URL}/v1/models", headers=HEADERS)
-    print("可用模型:", response.json())
-    return response.json()
-
-
-def get_status():
-    """获取服务详细状态"""
-    response = httpx.get(f"{BASE_URL}/status", headers=HEADERS)
-    print("服务状态:", response.json())
-    return response.json()
-
-
-def generate_embedding(text: str, model: str = "unsloth/Qwen3-Embedding-0.6B"):
-    """生成文本 embedding"""
+    Args:
+        text: 输入文本
+        model: 模型名称
+        encoding_format: 编码格式，支持 "float" 或 "base64"
+    """
     payload = {
         "model": model,
         "input": [text],
+        "encoding_format": encoding_format,
     }
     response = httpx.post(
         f"{BASE_URL}/v1/embeddings",
@@ -299,7 +390,20 @@ def generate_embedding(text: str, model: str = "unsloth/Qwen3-Embedding-0.6B"):
         timeout=60,
     )
     result = response.json()
-    print(f"Embedding 维度：{len(result['data'][0]['embedding'])}")
+
+    if encoding_format == "base64":
+        # base64 格式，解码并显示预览
+        import struct
+        embedding_data = result['data'][0]['embedding']
+        decoded = base64.b64decode(embedding_data)
+        float_count = len(decoded) // 4  # float32 占 4 字节
+        floats = struct.unpack(f'{float_count}f', decoded)
+        print(f"Embedding 维度：{len(floats)} (base64 编码)")
+        print(f"向量预览 (前 10 个值): {floats[:10]}")
+    else:
+        # float 格式
+        print(f"Embedding 维度：{len(result['data'][0]['embedding'])}")
+
     return result
 
 
@@ -324,11 +428,9 @@ def rerank_documents(query: str, documents: list):
 
 def transcribe_audio(audio_path: str):
     """语音转文字 (ASR)"""
-    # 读取音频文件
     with open(audio_path, "rb") as f:
         audio_data = f.read()
 
-    # 使用 multipart/form-data 上传
     files = {"file": ("audio.mp3", audio_data, "audio/mpeg")}
     response = httpx.post(
         f"{BASE_URL}/v1/audio/transcriptions",
@@ -343,7 +445,6 @@ def transcribe_audio(audio_path: str):
 
 def parse_pdf(pdf_path: str):
     """解析 PDF 文件 (MinerU/OCR)"""
-    # 读取 PDF 文件
     with open(pdf_path, "rb") as f:
         pdf_data = f.read()
 
@@ -354,34 +455,55 @@ def parse_pdf(pdf_path: str):
         headers={"Authorization": f"Bearer {API_TOKEN}"},
         timeout=600,
     )
-    print(f"PDF 解析完成，ZIP 大小：{len(response.content)} bytes")
+    print(f"PDF 解析完成，ZIP 大小：{len(response.content)} bytes ({len(response.content) / 1024 / 1024:.2f} MB)")
     return response.content
-
-
-if __name__ == "__main__":
-    # 运行所有测试
-    check_health()
-    list_models()
-    generate_embedding("你好，世界！")
-    rerank_documents("深度学习", [
-        "人工智能是计算机科学的一个分支",
-        "机器学习是实现人工智能的方法之一",
-        "深度学习是机器学习的子集",
-    ])
-    # transcribe_audio("data/audio_s.mp3")  # ASR 测试
-    # parse_pdf("data/InfoLOD.pdf")         # PDF 解析测试
 ```
 
-**运行示例**:
+**测试数据文件**:
 
-```bash
-cd pi-llm-server
-python examples/basic_usage.py
-```
-
-示例会自动使用 `data/` 目录下的测试文件：
+示例程序使用以下测试文件（需自行准备）：
 - `data/audio_s.mp3` - ASR 语音识别测试
 - `data/InfoLOD.pdf` - PDF 解析测试
+
+---
+
+## 命令行工具
+
+安装后可以使用 `pi-llm-server` 命令：
+
+```bash
+# 查看所有命令
+pi-llm-server --help
+
+# 一站式启动所有服务（后台服务 + 网关）
+pi-llm-server start-all
+
+# 一站式停止所有服务
+pi-llm-server stop-all
+
+# 查看所有服务状态
+pi-llm-server status
+
+# 后台服务管理（start/stop/restart/status）
+pi-llm-server services start --all
+pi-llm-server services stop --all
+pi-llm-server services status
+
+# 仅启动网关（默认行为）
+pi-llm-server
+pi-llm-server --port 8090
+pi-llm-server --config ~/.config/pi-llm-server/config.yaml
+```
+
+### 命令说明
+
+| 命令 | 说明 |
+|------|------|
+| `start-all` | 一站式启动所有服务（后台服务 + 统一网关） |
+| `stop-all` | 一站式停止所有服务（网关 + 后台服务） |
+| `status` | 查看所有服务状态（网关 + 后台服务） |
+| `services` | 后台服务管理（start/stop/restart/status） |
+| 无命令 | 仅启动统一网关（默认行为） |
 
 ---
 
@@ -391,6 +513,7 @@ python examples/basic_usage.py
 
 - 默认路径：`~/.config/pi-llm-server/config.yaml`
 - 可通过 `--config` 参数指定其他路径
+- 首次运行时会自动从包内复制示例配置文件
 
 ### 主要配置项
 
@@ -403,17 +526,114 @@ python examples/basic_usage.py
 | `auth.enabled` | 是否启用认证 | `true` |
 | `auth.tokens` | 有效 Token 列表 | `[]` |
 | `queue.enabled` | 是否启用队列 | `true` |
+| `queue.default.max_size` | 默认队列大小 | `100` |
+| `queue.default.max_concurrent` | 默认并发数 | `1` |
+| `queue.default.timeout_seconds` | 默认超时时间 | `300` |
 | `services.*.enabled` | 是否启用子服务 | `true` |
 | `services.*.base_url` | 子服务地址 | 需配置 |
+| `health_check.enabled` | 是否启用健康检查 | `true` |
+| `health_check.interval_seconds` | 健康检查间隔 | `30` |
+| `health_check.unhealthy_threshold` | 不健康判定阈值 | `3` |
+
+### 配置文件示例
+
+完整配置示例请参考 [`pi_llm_server/examples/config.example.yaml`](pi_llm_server/examples/config.example.yaml)：
+
+```yaml
+# =============================================
+# 服务基础配置
+# =============================================
+server:
+  host: "0.0.0.0"
+  port: 8090
+  workers: 4
+  log_level: "info"
+
+# =============================================
+# API 访问控制
+# =============================================
+auth:
+  enabled: true
+  tokens:
+    - "sk-5f8b839908d14561590b70227c72ca86"
+
+# =============================================
+# 请求队列配置 - 差异化策略
+# =============================================
+queue:
+  enabled: true
+  default:
+    max_size: 100
+    max_concurrent: 1
+    timeout_seconds: 300
+  services:
+    embedding:
+      max_concurrent: 1
+      max_size: 200
+      timeout_seconds: 60
+    reranker:
+      max_concurrent: 4
+      max_size: 200
+      timeout_seconds: 120
+    asr:
+      max_concurrent: 1
+      max_size: 50
+      timeout_seconds: 600
+    mineru:
+      max_concurrent: 1
+      max_size: 20
+      timeout_seconds: 1800
+
+# =============================================
+# 子服务配置
+# =============================================
+services:
+  embedding:
+    enabled: true
+    base_url: "http://127.0.0.1:8091"
+    models:
+      - id: "unsloth/Qwen3-Embedding-0.6B"
+        path: "~/.cache/modelscope/hub/models/unsloth/Qwen3-Embedding-0.6B"
+        device: "cuda"
+  asr:
+    enabled: true
+    base_url: "http://127.0.0.1:8092"
+    models:
+      - id: "Qwen/Qwen3-ASR-1.7B"
+        path: "~/.cache/modelscope/hub/models/Qwen/Qwen3-ASR-1.7B"
+        gpu_memory_utilization: 0.9
+  reranker:
+    enabled: true
+    base_url: "http://127.0.0.1:8093"
+    models:
+      - id: "Qwen/Qwen3-Reranker-0.6B"
+        path: "~/.cache/modelscope/hub/models/Qwen/Qwen3-Reranker-0.6B"
+        device: "cpu"
+  mineru:
+    enabled: true
+    base_url: "http://127.0.0.1:8094"
+    config:
+      vram: "9000"
+      model_source: "modelscope"
+
+# =============================================
+# 健康检查配置
+# =============================================
+health_check:
+  enabled: true
+  interval_seconds: 30
+  timeout_seconds: 10
+  unhealthy_threshold: 3
+```
 
 ### 队列配置策略
 
 | 服务 | 并发数 | 队列大小 | 超时 (秒) | 说明 |
 |------|--------|----------|-----------|------|
-| embedding | 4 | 200 | 60 | CPU 多核并行 |
+| embedding | 1 | 200 | 60 | GPU 推理，顺序处理避免显存溢出 |
 | reranker | 4 | 200 | 120 | CPU 多核并行 |
-| asr | 1 | 50 | 600 | GPU 推理顺序处理 |
-| mineru | 1 | 20 | 1800 | PDF 解析耗时 |
+| asr | 1 | 50 | 600 | GPU 推理，顺序处理避免显存溢出 |
+| mineru | 1 | 20 | 1800 | PDF 解析耗时，顺序处理 |
 
 ### 端口分配
 
@@ -610,6 +830,57 @@ curl -X POST http://localhost:8090/v1/ocr/parser \
 │Embedding│ │-ASR │ │Reranker│ │VLM     │
 └─────────┘ └─────┘ └────────┘ └────────┘
 ```
+
+---
+
+## 项目结构
+
+```
+pi-llm-server/
+├── pi_llm_server/              # 主包目录
+│   ├── __init__.py
+│   ├── __main__.py             # python -m pi_llm_server 入口
+│   ├── cli.py                  # 命令行工具（一站式启动）
+│   ├── server.py               # FastAPI 应用主服务
+│   ├── config.py               # 配置管理
+│   ├── launcher/               # 子服务启动器
+│   │   ├── embedding_server.py
+│   │   ├── asr_server.py
+│   │   ├── reranker_server.py
+│   │   ├── service_manager.py  # 服务管理器
+│   │   └── mineru_server.sh
+│   ├── services/               # 服务实现
+│   │   ├── embedding.py
+│   │   ├── asr.py
+│   │   ├── reranker.py
+│   │   └── mineru.py
+│   ├── clients/                # 子服务客户端
+│   │   ├── embedding_client.py
+│   │   ├── asr_client.py
+│   │   ├── reranker_client.py
+│   │   └── mineru_client.py
+│   ├── utils/                  # 工具函数
+│   │   ├── logging.py
+│   │   └── queue_manager.py
+│   └── examples/               # 示例文件和配置
+│       ├── __init__.py
+│       ├── basic_usage.py      # Python 客户端使用示例
+│       ├── config.example.yaml # 配置文件示例
+│       ├── install-service.sh  # systemd 服务自动安装脚本
+│       └── pi-llm-server.service.template # systemd 服务模板
+├── README.md                   # 项目说明
+├── pyproject.toml              # 项目配置和依赖
+└── setup.py                    # 安装脚本（已废弃，使用 pyproject.toml）
+```
+
+### 示例文件说明
+
+| 文件 | 说明 |
+|------|------|
+| `examples/basic_usage.py` | Python 客户端调用示例，包含 Embedding、Reranker、ASR、PDF 解析等完整示例 |
+| `examples/config.example.yaml` | 配置文件模板，复制为 `~/.config/pi-llm-server/config.yaml` 使用 |
+| `examples/install-service.sh` | systemd 服务自动安装脚本，推荐方式使用此脚本安装服务 |
+| `examples/pi-llm-server.service.template` | systemd 服务模板文件，供手动配置时参考 |
 
 ---
 

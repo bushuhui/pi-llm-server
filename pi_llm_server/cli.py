@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-PI-LLM-Server 命令行入口
+PI-LLM-Server 命令行入口 - 统一网关 + 后台服务一站式启动
 """
 import argparse
 import sys
 import os
+import time
+import subprocess
 from pathlib import Path
 
 # 导入 FastAPI 应用和配置
@@ -25,9 +27,9 @@ def ensure_config_exists() -> Path:
         print(f"创建配置目录：{DEFAULT_CONFIG_DIR}")
 
     if not DEFAULT_CONFIG_FILE.exists():
-        # 从项目目录复制示例配置
+        # 从包内复制示例配置
         script_dir = Path(__file__).parent
-        example_config = script_dir.parent.parent / "examples" / "config.example.yaml"
+        example_config = script_dir / "examples" / "config.example.yaml"
         if example_config.exists():
             import shutil
             shutil.copy2(example_config, DEFAULT_CONFIG_FILE)
@@ -42,8 +44,186 @@ def ensure_config_exists() -> Path:
     return DEFAULT_CONFIG_FILE
 
 
-def main():
-    """主函数"""
+def start_gateway_background(config_file: Path = None):
+    """后台启动网关服务"""
+    config_file = config_file or ensure_config_exists()
+
+    log_dir = Path.home() / ".cache" / "pi-llm-server" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "gateway.log"
+
+    pid_dir = Path.home() / ".cache" / "pi-llm-server" / "pids"
+    pid_dir.mkdir(parents=True, exist_ok=True)
+    pid_file = pid_dir / "gateway.pid"
+
+    with open(log_file, 'a') as f:
+        proc = subprocess.Popen(
+            [sys.executable, '-m', 'pi_llm_server', '--config', str(config_file)],
+            stdout=f,
+            stderr=f,
+            start_new_session=True,
+        )
+    pid_file.write_text(str(proc.pid))
+    print(f"✓ 网关已启动 (PID: {proc.pid})")
+    time.sleep(2)
+    return True
+
+
+def stop_gateway() -> bool:
+    """停止网关服务"""
+    import signal
+    import socket
+
+    pid_dir = Path.home() / ".cache" / "pi-llm-server" / "pids"
+    pid_file = pid_dir / "gateway.pid"
+
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+            print(f"发送 SIGTERM 到网关 (PID: {pid})")
+
+            # 等待进程终止
+            for _ in range(10):
+                time.sleep(0.5)
+                try:
+                    os.kill(pid, 0)
+                except OSError:
+                    break
+            else:
+                os.kill(pid, signal.SIGKILL)
+                print(f"发送 SIGKILL 到网关")
+
+            pid_file.unlink()
+            print("✓ 网关已停止")
+            return True
+
+        except ProcessLookupError:
+            pid_file.unlink(missing_ok=True)
+            print("✓ 网关已停止")
+            return True
+        except Exception as e:
+            print(f"✗ 停止网关失败：{e}")
+            return False
+
+    # 尝试通过端口检查
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        result = sock.connect_ex(('127.0.0.1', 8090))
+        sock.close()
+        if result == 0:
+            print("⚠ 网关在运行但没有 PID 文件，请手动停止")
+            return False
+    except Exception:
+        pass
+
+    print("✓ 网关未运行")
+    return True
+
+
+def is_gateway_running() -> bool:
+    """检查网关是否正在运行"""
+    import socket
+
+    # 方法 1: 检查 PID 文件
+    pid_dir = Path.home() / ".cache" / "pi-llm-server" / "pids"
+    pid_file = pid_dir / "gateway.pid"
+
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, 0)
+            return True
+        except (ValueError, OSError):
+            pid_file.unlink(missing_ok=True)
+
+    # 方法 2: 检查端口
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        result = sock.connect_ex(('127.0.0.1', 8090))
+        sock.close()
+        return result == 0
+    except Exception:
+        return False
+
+
+def show_full_status():
+    """显示网关 + 后台服务状态"""
+    print("=" * 60)
+    print("PI-LLM-Server 全部服务状态")
+    print("=" * 60)
+    print()
+
+    # 网关状态
+    gateway_status = "运行中" if is_gateway_running() else "已停止"
+    gateway_symbol = "✓" if is_gateway_running() else "✗"
+    print(f"  {gateway_symbol} {'统一网关':20s} {gateway_status:10s} 端口：8090")
+
+    # 后台服务状态
+    from pi_llm_server.launcher.service_manager import SERVICE_CONFIG, is_service_running, get_service_pid
+
+    for name, cfg in SERVICE_CONFIG.items():
+        status = "运行中" if is_service_running(name) else "已停止"
+        pid = get_service_pid(name)
+        pid_str = f"(PID: {pid})" if pid else ""
+        symbol = "✓" if is_service_running(name) else "✗"
+        print(f"  {symbol} {cfg['name']:20s} {status:10s} 端口：{cfg['port']:5d} {pid_str}")
+
+    print()
+    print("=" * 60)
+
+
+def start_all_services():
+    """一站式启动：后台服务 + 网关"""
+    print("=" * 60)
+    print("启动所有服务（后台服务 + 网关）")
+    print("=" * 60)
+    print()
+
+    # 确保配置文件存在
+    config_file = ensure_config_exists()
+
+    # 启动后台服务
+    from pi_llm_server.launcher.service_manager import start_all
+    start_all()
+
+    print()
+    print("-" * 60)
+    print()
+
+    # 启动网关
+    start_gateway_background(config_file=config_file)
+
+    print()
+    print("=" * 60)
+    print("所有服务已启动")
+    print("=" * 60)
+
+
+def stop_all_services():
+    """一站式停止：网关 + 后台服务"""
+    print("=" * 60)
+    print("停止所有服务")
+    print("=" * 60)
+    print()
+
+    # 先停止网关
+    stop_gateway()
+
+    print()
+
+    # 停止后台服务
+    from pi_llm_server.launcher.service_manager import stop_all
+    stop_all()
+
+    print()
+    print("=" * 60)
+    print("所有服务已停止")
+    print("=" * 60)
+
+
+def run_gateway():
+    """运行网关服务（前台模式）"""
     parser = argparse.ArgumentParser(
         description="PI-LLM Server - 统一 LLM 服务网关",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -149,6 +329,53 @@ def main():
         log_level=config_manager.config.server.log_level,
         workers=workers,
     )
+
+
+def main():
+    """主函数 - 支持一站式启动命令"""
+    # 检查子命令
+    if len(sys.argv) > 1:
+        if sys.argv[1] == 'start-all':
+            # 一站式启动：后台服务 + 网关
+            start_all_services()
+        elif sys.argv[1] == 'stop-all':
+            # 一站式停止：网关 + 后台服务
+            stop_all_services()
+        elif sys.argv[1] == 'status':
+            # 显示全部服务状态
+            show_full_status()
+        elif sys.argv[1] == 'services':
+            # 传递给 service_manager（只管理后台服务）
+            sys.argv.pop(0)  # 移除 'pi-llm-server' 或脚本名
+            from pi_llm_server.launcher.service_manager import main as service_main
+            service_main()
+        elif sys.argv[1] in ('-h', '--help'):
+            print("""
+PI-LLM-Server - 统一 LLM 服务网关
+
+用法:
+  pi-llm-server [命令] [选项]
+
+命令:
+  start-all     启动所有服务（后台服务 + 网关）
+  stop-all      停止所有服务（网关 + 后台服务）
+  status        查看所有服务状态（网关 + 后台服务）
+  services      后台服务管理（start/stop/restart/status）
+  <无命令>      仅启动统一网关（默认行为）
+
+示例:
+  pi-llm-server start-all              # 一站式启动所有服务
+  pi-llm-server stop-all               # 一站式停止所有服务
+  pi-llm-server status                 # 查看所有服务状态
+  pi-llm-server services start --all   # 仅启动后台服务
+  pi-llm-server --port 8090            # 仅启动网关，指定端口
+            """)
+        else:
+            # 默认启动网关
+            run_gateway()
+    else:
+        # 默认启动网关
+        run_gateway()
 
 
 if __name__ == "__main__":

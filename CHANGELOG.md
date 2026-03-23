@@ -5,6 +5,55 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.1.5] - 2026-03-23
+
+### Changed
+
+- **版本号统一管理**:
+  - `pi_llm_server/__init__.py` 现在使用 `importlib.metadata.version()` 动态读取版本
+  - 所有子服务文件统一使用 `from pi_llm_server import __version__`
+  - 移除了所有硬编码的版本号，现在只需在 `pyproject.toml` 中维护版本号
+  - 涉及文件：`server.py`, `launcher/asr_server.py`, `launcher/embedding_server.py`, `launcher/reranker_server.py`
+
+- **systemd 服务部署改进**:
+  - 删除硬编码路径的 `examples/pi-llm-server.service`
+  - 新增 `examples/install-service.sh` 自动配置脚本
+  - 新增 `examples/pi-llm-server.service.template` 模板文件
+  - 安装脚本自动检测：当前用户、Conda 环境、项目安装模式（pip/源码）
+  - 生成合适的 service 文件，无需手动编辑
+
+- **examples 目录重构**:
+  - 将 examples 目录从根目录迁移到 `pi_llm_server/examples/`
+  - 现在作为包数据打包到 wheel 中
+  - 更新 `pyproject.toml` 配置：`package-data` 添加 `examples/**/*`
+
+- **README.md 全面更新**:
+  - 新增命令行工具完整说明和命令表格
+  - 更新服务启动方式说明（一站式启动、systemd 服务等）
+  - 新增项目结构树和示例文件说明
+  - 更新 systemd 服务安装指南，推荐使用自动安装脚本
+  - 更新 Python 客户端示例代码结构
+
+### Added
+
+- **新增文件**:
+  - `pi_llm_server/examples/install-service.sh` - systemd 服务自动安装脚本
+  - `pi_llm_server/examples/pi-llm-server.service.template` - systemd 服务模板
+  - `pi_llm_server/examples/__init__.py` - 包初始化文件
+
+### Removed
+
+- **删除文件**:
+  - `examples/pi-llm-server.service` - 硬编码路径的旧 service 文件
+  - `setup.py` - 已废弃，现完全使用 `pyproject.toml`
+
+### Fixed
+
+- 修正 README.md 中 examples 目录路径引用
+- 修正队列配置策略表格中的并发数说明
+
+---
+
 ## [1.1.4] - 2026-03-20
 
 ### Fixed
@@ -206,6 +255,7 @@
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| 1.1.5 | 2026-03-23 | 版本号统一管理、systemd 服务自动部署、examples 目录重构、README 全面更新 |
 | 1.1.4 | 2026-03-20 | MinerU API 路径修复，README 文档完善 |
 | 1.1.3 | 2026-03-20 | API 路径修复，示例程序更新 |
 | 1.1.2 | 2026-03-20 | 目录结构重构，服务脚本迁移到 launcher/clients |
@@ -215,27 +265,5 @@
 
 ---
 
-## 提交统计
 
-```
-Author: bushuhui
-
-Commit 日期              信息
------- ----------------- ------------------------------------------
-5cabba9  2026-03-20      Update pyproject.toml with comprehensive dependency groups
-b890704  2026-03-20      update prompt
-2b34e96  2026-03-20      Improve scripts
-540fc68  2026-03-20      Update scripts/service_manager.py
-5877b7d  2026-03-20      Merge branch 'master' of gitee.com:pi-lab/pi-llm-server
-c490522  2026-03-20      Improve requirements_mineru.txt requirements_vllm.txt
-e293ea1  2026-03-20      add LICENSE.
-031effa  2026-03-19      First project refresh
-f23bf93  2026-03-19      Finish project structure design
-2168e3a  2026-03-18      Improve project design doc
-6e94761  2026-03-17      update doc
-e189aab  2026-03-17      First version
-```
-
----
-
-*最后更新：2026-03-20 (v1.1.4)*
+*最后更新：2026-03-23 (v1.1.5)*
