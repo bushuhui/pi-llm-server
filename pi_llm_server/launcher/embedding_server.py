@@ -11,7 +11,7 @@ Qwen3-Embedding 服务器
     # 使用 Qwen3-Embedding-0.6B (默认 CPU)
     python embedding_server.py
 
-    # 使用 GPU
+    # 使用 GPU (模型按需加载，空闲 90 秒后自动释放显存)
     python embedding_server.py --device cuda
 
     # 使用 Qwen3-Embedding-4B (需要 >10GB 显存)
@@ -20,8 +20,16 @@ Qwen3-Embedding 服务器
     # 指定 GPU
     python embedding_server.py --device cuda:1
 
+    # 自定义空闲超时时间 (秒)
+    python embedding_server.py --device cuda --idle-timeout 300
+
     # 后台运行
     nohup python embedding_server.py > server.log 2>&1 &
+
+特性:
+    - 模型按需加载：首次请求时才加载到 GPU，启动时不占用显存
+    - 空闲自动卸载：超过设定时间无请求时自动释放 GPU 显存
+    - 自动重新加载：请求到来时自动重新加载模型
 """
 
 import os
@@ -31,7 +39,9 @@ import logging
 import time
 import base64
 import struct
+import asyncio
 from typing import List, Optional, Union
+from contextlib import asynccontextmanager
 
 import torch
 from fastapi import FastAPI, HTTPException
@@ -84,21 +94,36 @@ def setup_logging(service_name: str):
 logger = setup_logging("embedding")
 
 # FastAPI 应用
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # 启动时
+    logger.info(f"空闲超时检测已启用，超时时间：{idle_timeout_seconds}秒")
+    yield
+    # 关闭时
+    logger.info("服务关闭，释放资源...")
+    unload_model()
+
 app = FastAPI(
     title="Qwen3-Embedding API",
     description="Qwen3-Embedding 模型 embedding 服务",
-    version=__version__
+    version=__version__,
+    lifespan=lifespan
 )
-
-# 全局变量
-model = None
-device = None
-model_name = None
 
 # 默认配置
 DEFAULT_MODEL_PATH = os.path.expanduser("~/.cache/modelscope/hub/models/unsloth/Qwen3-Embedding-0.6B")
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8091
+DEFAULT_IDLE_TIMEOUT = 90  # 空闲超时（秒），默认 90 秒
+
+# 全局变量
+model = None
+device = None
+model_name = None
+model_path_global = None  # 保存模型路径用于重新加载
+idle_timeout_seconds = DEFAULT_IDLE_TIMEOUT  # 空闲超时配置
+last_request_time = None
+model_unloaded = False  # 标记模型是否已卸载
 
 
 # ==================== 请求/响应模型 ====================
@@ -198,12 +223,95 @@ def load_model(model_path: str, device_str: str = "cuda"):
     logger.info(f"模型参数：{total_params / 1e6:.1f}M, 向量维度：{embedding_dim}")
 
 
+def unload_model():
+    """卸载模型，释放 GPU 显存"""
+    global model, device, model_unloaded
+
+    if model is None:
+        return
+
+    if device is not None and str(device).startswith("cuda"):
+        try:
+            logger.info("卸载模型，释放 GPU 显存...")
+            # 删除模型引用
+            del model
+            model = None
+
+            # 清理 CUDA 缓存
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+
+            model_unloaded = True
+            logger.info("模型已卸载，GPU 显存已释放")
+        except Exception as e:
+            logger.error(f"卸载模型失败：{e}")
+    else:
+        logger.debug("模型在 CPU 上，无需卸载")
+
+
+def ensure_model_loaded():
+    """
+    确保模型已加载，如果已卸载则重新加载
+    同时记录请求时间用于空闲检测
+    """
+    global model, device, model_unloaded, last_request_time, model_name
+
+    # 记录请求时间
+    last_request_time = time.time()
+
+    # 模型已加载，直接返回
+    if model is not None and not model_unloaded:
+        return
+
+    # 重新加载模型
+    logger.info("重新加载模型到 GPU...")
+    try:
+        model = SentenceTransformer(
+            model_path_global,
+            device=str(device),
+            trust_remote_code=True
+        )
+        model_unloaded = False
+
+        # 设置模型名称
+        model_name = os.path.basename(os.path.dirname(model_path_global)) + "/" + os.path.basename(model_path_global)
+
+        logger.info("模型已重新加载到 GPU")
+    except Exception as e:
+        logger.error(f"加载模型失败：{e}")
+        raise
+
+
+async def check_idle_and_unload():
+    """
+    异步检查空闲超时并卸载模型
+    在每次请求后启动，等待 idle_timeout_seconds 后检查
+    """
+    global model_unloaded
+
+    await asyncio.sleep(idle_timeout_seconds)
+
+    # 检查是否仍然空闲
+    if last_request_time is not None:
+        idle_time = time.time() - last_request_time
+        if idle_time >= idle_timeout_seconds and not model_unloaded:
+            # 在线程池中执行同步的 unload_model
+            await asyncio.get_event_loop().run_in_executor(None, unload_model)
+            logger.info(f"空闲超时 {idle_timeout_seconds} 秒，已卸载模型")
+
+
 # ==================== API 端点 ====================
 
 @app.get("/health")
 async def health_check():
     """健康检查"""
-    return {"status": "healthy", "device": str(device) if device else "not_loaded"}
+    return {
+        "status": "healthy",
+        "device": str(device) if device else "not_loaded",
+        "model_loaded": model is not None and not model_unloaded,
+        "idle_timeout": idle_timeout_seconds,
+        "last_request": last_request_time
+    }
 
 
 @app.get("/v1/models")
@@ -224,8 +332,11 @@ async def list_models():
 @app.post("/v1/embeddings")
 async def create_embeddings(request: EmbeddingRequest):
     """OpenAI 兼容的 embedding 接口"""
-    if model is None:
-        raise HTTPException(status_code=503, detail="模型未加载")
+    # 确保模型已加载
+    ensure_model_loaded()
+
+    # 启动后台检查任务
+    asyncio.create_task(check_idle_and_unload())
 
     try:
         # 处理输入
@@ -297,8 +408,11 @@ async def calculate_similarity(request: SimilarityRequest):
 
     响应格式: {"similarity": 0.95}
     """
-    if model is None:
-        raise HTTPException(status_code=503, detail="模型未加载")
+    # 确保模型已加载
+    ensure_model_loaded()
+
+    # 启动后台检查任务
+    asyncio.create_task(check_idle_and_unload())
 
     try:
         emb1 = model.encode(request.text1, convert_to_tensor=True)
@@ -364,16 +478,39 @@ def main():
         default="cpu",
         help="运行设备 (默认：cpu，可选：cpu, cuda, cuda:0, cuda:1 等)"
     )
+    parser.add_argument(
+        "--idle-timeout",
+        type=int,
+        default=DEFAULT_IDLE_TIMEOUT,
+        help=f"空闲超时（秒），超过此时间无请求将释放显存 (默认：{DEFAULT_IDLE_TIMEOUT})"
+    )
 
     args = parser.parse_args()
+
+    # 设置全局变量
+    global idle_timeout_seconds, model_path_global, device
+    idle_timeout_seconds = args.idle_timeout
+    model_path_global = args.model_path
 
     # 检查模型路径
     if not os.path.exists(args.model_path):
         logger.error(f"模型路径不存在：{args.model_path}")
         sys.exit(1)
 
-    # 加载模型
-    load_model(args.model_path, device_str=args.device)
+    # 设置设备（模型将在首次请求时加载）
+    use_cuda = args.device.startswith("cuda") and torch.cuda.is_available()
+    if use_cuda:
+        device = torch.device(args.device)
+        gpu_idx = 0
+        if ":" in args.device:
+            gpu_idx = int(args.device.split(":")[1])
+        gpu_name = torch.cuda.get_device_name(gpu_idx)
+        gpu_memory = torch.cuda.get_device_properties(gpu_idx).total_memory / 1024**3
+        logger.info(f"检测到 GPU: {gpu_name} ({gpu_memory:.1f} GB)")
+        logger.info(f"模型将在首次请求时加载到 GPU，空闲 {idle_timeout_seconds} 秒后自动释放显存")
+    else:
+        device = torch.device("cpu")
+        logger.info("使用 CPU 运行模型，空闲超时卸载功能已禁用")
 
     # 启动服务
     logger.info(f"启动服务器：http://{args.host}:{args.port}")
