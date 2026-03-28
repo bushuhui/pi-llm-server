@@ -122,8 +122,9 @@ device = None
 model_name = None
 model_path_global = None  # 保存模型路径用于重新加载
 idle_timeout_seconds = DEFAULT_IDLE_TIMEOUT  # 空闲超时配置
-last_request_time = None
+last_request_time = None  # 仅记录业务请求时间（不包括健康检测）
 model_unloaded = False  # 标记模型是否已卸载
+last_health_check_time = None  # 记录健康检测时间（不用于空闲检测）
 
 
 # ==================== 请求/响应模型 ====================
@@ -233,31 +234,63 @@ def unload_model():
     if device is not None and str(device).startswith("cuda"):
         try:
             logger.info("卸载模型，释放 GPU 显存...")
-            # 删除模型引用
-            del model
+
+            # 先删除模型对象
+            model_copy = model
             model = None
 
-            # 清理 CUDA 缓存
+            # 强制删除模型引用
+            del model_copy
+
+            # 等待 Python GC 清理引用
+            import gc
+            gc.collect()
+
+            # 清理 CUDA 缓存和同步
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
 
+            # 重置 CUDA 内存统计（可选，帮助调试）
+            # torch.cuda.reset_peak_memory_stats()
+
             model_unloaded = True
             logger.info("模型已卸载，GPU 显存已释放")
+
+            # 记录当前显存使用情况（用于调试）
+            if torch.cuda.is_available():
+                allocated = torch.cuda.memory_allocated() / 1024**3
+                reserved = torch.cuda.memory_reserved() / 1024**3
+                logger.info(f"显存状态：已分配={allocated:.2f} GB, 预留={reserved:.2f} GB")
         except Exception as e:
             logger.error(f"卸载模型失败：{e}")
     else:
         logger.debug("模型在 CPU 上，无需卸载")
 
 
-def ensure_model_loaded():
+def clear_cuda_cache():
+    """清理 CUDA 缓存，释放任务执行过程中的临时显存"""
+    if device is not None and str(device).startswith("cuda"):
+        try:
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            logger.debug("已清理 CUDA 临时缓存")
+        except Exception as e:
+            logger.debug(f"清理 CUDA 缓存失败：{e}")
+
+
+def ensure_model_loaded(record_request=True):
     """
     确保模型已加载，如果已卸载则重新加载
-    同时记录请求时间用于空闲检测
+
+    Args:
+        record_request: 是否记录请求时间用于空闲检测
+                       健康检测等接口应设为 False
     """
     global model, device, model_unloaded, last_request_time, model_name
 
-    # 记录请求时间
-    last_request_time = time.time()
+    # 仅当需要时才记录请求时间
+    if record_request:
+        last_request_time = time.time()
 
     # 模型已加载，直接返回
     if model is not None and not model_unloaded:
@@ -305,13 +338,41 @@ async def check_idle_and_unload():
 @app.get("/health")
 async def health_check():
     """健康检查"""
+    global last_health_check_time
+    last_health_check_time = time.time()
+
+    # 获取当前显存使用情况
+    gpu_info = {}
+    if torch.cuda.is_available():
+        gpu_info = {
+            "allocated_gb": round(torch.cuda.memory_allocated() / 1024**3, 2),
+            "reserved_gb": round(torch.cuda.memory_reserved() / 1024**3, 2),
+            "max_gb": round(torch.cuda.get_device_properties(0).total_memory / 1024**3, 2)
+        }
+
     return {
         "status": "healthy",
         "device": str(device) if device else "not_loaded",
         "model_loaded": model is not None and not model_unloaded,
         "idle_timeout": idle_timeout_seconds,
-        "last_request": last_request_time
+        "last_request": last_request_time,
+        "last_health_check": last_health_check_time,
+        "gpu_memory": gpu_info
     }
+
+
+@app.post("/admin/unload-model")
+async def unload_model_endpoint():
+    """
+    手动卸载模型，释放 GPU 显存
+    用于在不需要使用时主动释放显存
+    """
+    global model_unloaded
+    if model is not None and not model_unloaded:
+        await asyncio.get_event_loop().run_in_executor(None, unload_model)
+        return {"status": "ok", "message": "模型已卸载"}
+    else:
+        return {"status": "ok", "message": "模型已在卸载状态或未加载"}
 
 
 @app.get("/v1/models")
@@ -399,6 +460,9 @@ async def create_embeddings(request: EmbeddingRequest):
     except Exception as e:
         logger.error(f"生成 embedding 失败：{e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # 任务完成后立即清理临时显存，仅保留模型本身占用
+        clear_cuda_cache()
 
 
 @app.post("/v1/similarity")
@@ -427,6 +491,9 @@ async def calculate_similarity(request: SimilarityRequest):
     except Exception as e:
         logger.error(f"计算相似度失败：{e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # 任务完成后立即清理临时显存，仅保留模型本身占用
+        clear_cuda_cache()
 
 
 # ==================== 主函数 ====================
