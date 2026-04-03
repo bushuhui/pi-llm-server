@@ -1,6 +1,12 @@
 
 ## TODO
 
+- [ ] 修正 rerank 程序总是退出的问题
+- [ ] 修改 embedding 程序，默认输出 base64 的输出，并使用JavaScript的openai库测试
+- [ ] PI-LLM OCR 增加接收 docx, doc, ppt, pptx, xls, xlsx等文件的功能
+  - [ ] 将 docx 转成 PDF, 使用 `libreoffice --headless --convert-to pdf input.docx`
+  - [ ] 然后调用现有 PDF 解析流程
+
 - [x] 配置文件里面的模型需要改成 ~/.cache 开头的路径。
 - [x] 如果用1个Conda环境，能够同时运行mineru和其他vllm服务程序，则配置文件里面的Python程序路径配置项可以去掉
 - [x] pi-llm-server 的gateway 测试
