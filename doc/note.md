@@ -183,4 +183,7 @@ git tag
 
 # 推送所有本地未推送的标签到远程
 git push origin --tags
+
+# 拉取服务器上的tags
+git fetch --tags
 ```
