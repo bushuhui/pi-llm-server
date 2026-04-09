@@ -10,6 +10,9 @@ MinerU PDF 解析服务模块
 
 import httpx
 import logging
+import subprocess
+import tempfile
+import os
 from typing import Optional, List, Union
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -18,6 +21,131 @@ from pydantic import BaseModel, Field
 from ..config import ServiceConfig
 
 logger = logging.getLogger(__name__)
+
+
+# ============ 支持的文件类型 ============
+
+# 支持的文档类型
+SUPPORTED_DOCUMENT_TYPES = {
+    # PDF 格式
+    ".pdf": "application/pdf",
+    # 图片格式
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    # Office 文档（需要转换为 PDF）
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".xls": "application/vnd.ms-excel",
+}
+
+# 需要转换为 PDF 的文件类型
+OFFICE_DOCUMENT_TYPES = {".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls"}
+
+
+def get_file_extension(filename: str) -> str:
+    """获取文件扩展名（小写）"""
+    _, ext = os.path.splitext(filename)
+    return ext.lower()
+
+
+def is_supported_file(filename: str) -> bool:
+    """检查文件类型是否支持"""
+    ext = get_file_extension(filename)
+    return ext in SUPPORTED_DOCUMENT_TYPES
+
+
+def needs_pdf_conversion(filename: str) -> bool:
+    """检查文件是否需要转换为 PDF"""
+    ext = get_file_extension(filename)
+    return ext in OFFICE_DOCUMENT_TYPES
+
+
+async def convert_to_pdf(file_content: bytes, filename: str) -> bytes:
+    """
+    使用 libreoffice 将 Office 文档转换为 PDF
+
+    Args:
+        file_content: 文件内容
+        filename: 原始文件名
+
+    Returns:
+        bytes: PDF 文件内容
+
+    Raises:
+        HTTPException: 转换失败时抛出
+    """
+    ext = get_file_extension(filename)
+
+    # 创建临时目录
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # 保存原始文件
+        input_path = os.path.join(temp_dir, filename)
+        with open(input_path, "wb") as f:
+            f.write(file_content)
+
+        # 使用 libreoffice 转换为 PDF
+        try:
+            logger.info(f"正在使用 libreoffice 转换文件：{filename} -> PDF")
+
+            result = subprocess.run(
+                [
+                    "libreoffice",
+                    "--headless",
+                    "--convert-to", "pdf",
+                    "--outdir", temp_dir,
+                    input_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,  # 2 分钟超时
+            )
+
+            if result.returncode != 0:
+                logger.error(f"libreoffice 转换失败：{result.stderr}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Office 文档转换失败：{result.stderr}"
+                )
+
+            # 读取生成的 PDF 文件
+            pdf_filename = os.path.splitext(filename)[0] + ".pdf"
+            pdf_path = os.path.join(temp_dir, pdf_filename)
+
+            if not os.path.exists(pdf_path):
+                logger.error(f"PDF 文件未生成：{pdf_path}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Office 文档转换失败：未生成 PDF 文件"
+                )
+
+            with open(pdf_path, "rb") as f:
+                pdf_content = f.read()
+
+            logger.info(f"文件转换成功：{filename} -> {pdf_filename}")
+            return pdf_content
+
+        except subprocess.TimeoutExpired:
+            logger.error("libreoffice 转换超时")
+            raise HTTPException(
+                status_code=504,
+                detail="Office 文档转换超时"
+            )
+        except FileNotFoundError:
+            logger.error("未找到 libreoffice，请安装：sudo apt-get install libreoffice")
+            raise HTTPException(
+                status_code=500,
+                detail="服务器未安装 libreoffice，无法转换 Office 文档"
+            )
+        except Exception as e:
+            logger.error(f"文件转换失败：{e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"文件转换失败：{str(e)}"
+            )
 
 
 # ============ 请求/响应模型 ============
@@ -82,10 +210,10 @@ class MinerUService:
         end_page_id: Optional[int] = 99999,
     ) -> bytes:
         """
-        解析 PDF 文件
+        解析文档文件（支持 PDF、图片、Office 文档）
 
         Args:
-            file: PDF 文件
+            file: 上传的文件（支持 PDF、jpg、png、docx、doc、pptx、ppt、xlsx、xls）
             backend: 解析后端 (pipeline/hybrid-auto-engine/vlm-auto-engine)
             parse_method: 解析方法 (auto/txt/ocr)
             lang_list: 语言 (ch/en/korean/japan 等)
@@ -103,9 +231,34 @@ class MinerUService:
         Raises:
             HTTPException: 请求失败时抛出
         """
+        file_filename = file.filename or "document.pdf"
+        file_ext = get_file_extension(file_filename)
+
+        # 检查文件类型是否支持
+        if not is_supported_file(file_filename):
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的文件类型：{file_ext}。支持的类型：{', '.join(SUPPORTED_DOCUMENT_TYPES.keys())}"
+            )
+
         # 读取文件内容
         file_content = await file.read()
-        file_filename = file.filename or "document.pdf"
+
+        # Office 文档需要转换为 PDF
+        if needs_pdf_conversion(file_filename):
+            try:
+                pdf_content = await convert_to_pdf(file_content, file_filename)
+                file_content = pdf_content
+                file_filename = os.path.splitext(file_filename)[0] + ".pdf"
+                logger.info(f"文件已转换为 PDF: {file_filename}")
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"文件转换失败：{e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"文件转换失败：{str(e)}"
+                )
 
         # 准备请求参数
         files = {"files": (file_filename, file_content, "application/pdf")}
@@ -192,7 +345,7 @@ class MinerUService:
 
         @self.router.post("/v1/ocr/parser", tags=["mineru"])
         async def parser_endpoint(
-            files: UploadFile = File(..., description="PDF 文件"),
+            files: UploadFile = File(..., description="文档文件（支持 PDF、jpg、png、docx、doc、pptx、ppt、xlsx、xls）"),
             backend: Optional[str] = Form(default="pipeline", description="解析后端"),
             parse_method: Optional[str] = Form(default="auto", description="解析方法"),
             lang_list: Optional[str] = Form(default="ch", description="语言"),
@@ -201,7 +354,7 @@ class MinerUService:
             return_md: Optional[bool] = Form(default=True, description="返回 markdown"),
             return_images: Optional[bool] = Form(default=True, description="返回图片"),
         ):
-            """解析 PDF 文件为 Markdown 和图片"""
+            """解析文档文件为 Markdown 和图片（支持 PDF、图片、Office 文档）"""
             zip_content = await self.parse_pdf(
                 file=files,
                 backend=backend,

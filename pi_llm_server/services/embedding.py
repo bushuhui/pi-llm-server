@@ -27,7 +27,7 @@ class EmbeddingRequest(BaseModel):
     """Embedding 请求"""
     input: Union[str, List[str]] = Field(..., description="输入文本或文本列表")
     model: Optional[str] = Field(default=None, description="模型 ID")
-    encoding_format: Optional[str] = Field(default="base64", description="编码格式：float | base64, 默认 base64")
+    encoding_format: Optional[str] = Field(default="float", description="编码格式：float | base64, 默认 float (OpenAI API 标准)")
 
 
 class EmbeddingResponse(BaseModel):
@@ -84,7 +84,7 @@ class EmbeddingService:
         self,
         input_text: Union[str, List[str]],
         model: Optional[str] = None,
-        encoding_format: Optional[str] = "base64",
+        encoding_format: Optional[str] = "float",
     ) -> dict:
         """
         调用 embedding 服务生成向量
@@ -92,7 +92,7 @@ class EmbeddingService:
         Args:
             input_text: 输入文本或文本列表
             model: 模型 ID (可选)
-            encoding_format: 编码格式：float | base64 (可选，默认 base64)
+            encoding_format: 编码格式：float | base64 (可选，默认 float)
 
         Returns:
             dict: embedding 响应

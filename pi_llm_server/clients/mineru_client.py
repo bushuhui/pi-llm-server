@@ -2,11 +2,24 @@
 # -*- coding: utf-8 -*-
 """
 MinerU API 客户端
-将 PDF 文件解析为 Markdown 和图片，并打包成 zip 文件
+将 PDF/图片/Office 文档解析为 Markdown 和图片，并打包成 zip 文件
+
+支持的文件类型:
+    - PDF 文档 (.pdf)
+    - 图片文件 (.jpg, .jpeg, .png)
+    - Word 文档 (.docx, .doc)
+    - PPT 演示文稿 (.pptx, .ppt)
+    - Excel 表格 (.xlsx, .xls)
 
 使用方法:
-    python mineru_client.py <input_pdf> <output_zip>
-    python mineru_client.py "CX560XAB-2W-BT 产品规格书.pdf" "output.zip"
+    python mineru_client.py <input_file> <output_zip>
+    python mineru_client.py "document.pdf" "output.zip"
+    python mineru_client.py "report.docx" "output.zip"
+    python mineru_client.py "slide.pptx" "output.zip"
+
+注意:
+    - Office 文档和图片会在服务器端自动转换为 PDF 后解析
+    - Office 文档转换需要服务器安装 libreoffice
 """
 
 import os
@@ -82,10 +95,10 @@ def check_file_exists(file_path: str) -> tuple:
 
 def call_mineru_api(input_pdf: str, output_zip: str, backend: str = "pipeline"):
     """
-    调用 MinerU API 解析 PDF 文件
+    调用 MinerU API 解析文档文件（支持 PDF、图片、Office 文档）
 
     Args:
-        input_pdf: 输入的 PDF 文件路径
+        input_pdf: 输入的文件路径（支持 PDF、jpg、png、docx、doc、pptx、ppt、xlsx、xls）
         output_zip: 输出的 zip 文件路径
         backend: 使用的后端，可选：pipeline, hybrid-auto-engine, vlm-auto-engine 等
     """
@@ -96,6 +109,23 @@ def call_mineru_api(input_pdf: str, output_zip: str, backend: str = "pipeline"):
         sys.exit(1)
 
     filename = os.path.basename(actual_path)
+    file_ext = os.path.splitext(filename)[1].lower()
+
+    # 支持的文件类型
+    supported_extensions = {".pdf", ".jpg", ".jpeg", ".png", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls"}
+
+    if file_ext not in supported_extensions:
+        logger.error(f"不支持的文件类型：{file_ext}")
+        logger.error(f"支持的类型：{', '.join(sorted(supported_extensions))}")
+        sys.exit(1)
+
+    # 检测文件类型
+    if file_ext in {".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls"}:
+        logger.info(f"检测到 Office 文档：{filename}，服务器将自动转换为 PDF")
+    elif file_ext in {".jpg", ".jpeg", ".png"}:
+        logger.info(f"检测到图片文件：{filename}，服务器将自动转换为 PDF")
+    else:
+        logger.info(f"检测到 PDF 文件：{filename}")
 
     logger.info(f"正在处理文件：{filename}")
     logger.info(f"API 地址：{API_ENDPOINT}")
@@ -103,7 +133,7 @@ def call_mineru_api(input_pdf: str, output_zip: str, backend: str = "pipeline"):
 
     # 准备请求参数
     files = {
-        "files": (filename, open(actual_path, "rb"), "application/pdf")
+        "files": (filename, open(actual_path, "rb"), "application/octet-stream")
     }
 
     data = {

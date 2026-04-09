@@ -762,6 +762,27 @@ curl -X POST http://localhost:8090/v1/ocr/parser \
 - `images/` - 提取的图片
 - 其他中间文件
 
+**支持的文件类型**:
+| 类型 | 扩展名 | 说明 |
+|------|--------|------|
+| PDF | `.pdf` | 原生 PDF 文档 |
+| 图片 | `.jpg`, `.jpeg`, `.png` | 图片文件（自动转换为 PDF 处理） |
+| Word 文档 | `.docx`, `.doc` | 需要安装 libreoffice 进行转换 |
+| PPT 演示文稿 | `.pptx`, `.ppt` | 需要安装 libreoffice 进行转换 |
+| Excel 表格 | `.xlsx`, `.xls` | 需要安装 libreoffice 进行转换 |
+
+**Office 文档转换依赖**:
+```bash
+# Ubuntu/Debian
+sudo apt-get install libreoffice
+
+# macOS (使用 Homebrew)
+brew install libreoffice
+
+# CentOS/RHEL
+sudo yum install libreoffice
+```
+
 **参数说明**:
 | 参数 | 默认值 | 说明 |
 |------|--------|------|

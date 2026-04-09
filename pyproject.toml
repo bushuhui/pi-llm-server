@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pi-llm-server"
-version = "1.1.5"
-description = "统一 LLM 服务网关 - 集成 Embedding、ASR、Reranker、MinerU 服务"
+version = "1.1.6"
+description = "统一 LLM 服务网关 - 集成 Embedding、ASR、Reranker、OCR 服务"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [

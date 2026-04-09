@@ -5,6 +5,58 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.1.6] - 2026-04-09
+
+### Added
+
+- **MinerU OCR 服务多格式文档支持**:
+  - 新增支持文件类型：`.docx`, `.doc`, `.pptx`, `.ppt`, `.xlsx`, `.xls`, `.jpg`, `.jpeg`, `.png`
+  - Office 文档自动使用 libreoffice 转换为 PDF 后解析
+  - 图片文件自动转换为 PDF 后解析
+  - 文件类型检测和验证功能
+  - 转换失败错误处理和超时保护（2 分钟超时）
+
+- **依赖检测**:
+  - 自动检测 libreoffice 是否安装
+  - 未安装时返回友好的错误提示
+
+### Changed
+
+- **`pi_llm_server/services/mineru.py`**:
+  - 新增 `SUPPORTED_DOCUMENT_TYPES` 常量定义支持的文档类型
+  - 新增 `OFFICE_DOCUMENT_TYPES` 常量定义需要转换的 Office 文档类型
+  - 新增 `get_file_extension()`, `is_supported_file()`, `needs_pdf_conversion()` 工具函数
+  - 新增 `convert_to_pdf()` 异步函数实现 Office 文档转换
+  - 改进 `parse_pdf()` 方法支持文件类型检测和自动转换
+  - 更新 API 端点描述说明支持的文件类型
+
+- **`pi_llm_server/clients/mineru_client.py`**:
+  - 更新文档字符串说明支持的文件类型
+  - 改进 `call_mineru_api()` 方法添加文件类型检测和提示
+  - 使用通用的 `application/octet-stream` 内容类型
+
+- **`README.md`**:
+  - 更新 PDF 解析部分添加支持的文件类型表格
+  - 新增 Office 文档转换依赖安装说明（libreoffice）
+  - 更新参数说明表格
+
+### Technical Details
+
+- **文件转换流程**:
+  1. 客户端上传任意支持的文档类型
+  2. 服务端检测文件扩展名
+  3. Office 文档/图片 → 使用 libreoffice 转换为 PDF
+  4. PDF → 调用现有 MinerU API 解析
+  5. 返回统一的 ZIP 格式结果
+
+- **错误处理**:
+  - 不支持的文件类型返回 HTTP 400
+  - libreoffice 未安装返回 HTTP 500 和明确错误信息
+  - 转换超时返回 HTTP 504
+  - 转换失败返回 HTTP 500 和详细错误日志
+
+---
+
 ## [1.1.5] - 2026-03-23
 
 ### Changed
