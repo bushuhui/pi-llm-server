@@ -1,6 +1,8 @@
 
 ## TODO
 
+- [ ] 将供应商的LLM服务，也让PI-LLM-Server代理，这样使用统一的API接口
+
 - [ ] 将实验室的 OpenClaw 也做成一个API，这样其他的程序就可以调用 OpenClaw 检索知识，执行命令等
   - [ ] graphify 等也可以转化成统一API接口，检索，查询
 
