@@ -98,6 +98,32 @@ services:
       model_source: "modelscope"  # huggingface / modelscope / local（国内建议 modelscope）
 
 # =============================================
+# 服务守护进程配置
+# =============================================
+daemon:
+  enabled: true
+  check_interval: 30       # 健康检查间隔（秒）
+  http_timeout: 10         # HTTP 检查超时（秒）
+  inference_timeout: 5     # 默认推理检测超时（秒）
+  unhealthy_threshold: 3   # 连续失败多少次判定为不健康
+  restart_cooldown: 120    # 默认重启后冷却时间（秒）
+  max_restart_attempts: 3  # 单次最多重启尝试次数
+  # 服务级别配置（覆盖默认值）
+  services:
+    embedding:
+      restart_cooldown: 60     # 模型加载快
+      inference_timeout: 3     # 短文本推理快
+    asr:
+      restart_cooldown: 180    # GPU模型加载慢，需要3分钟
+      inference_timeout: 10    # 音频转写需要时间
+    reranker:
+      restart_cooldown: 60     # CPU模型加载较快
+      inference_timeout: 3     # 短查询推理快
+    mineru:
+      restart_cooldown: 120    # PDF解析服务启动需要时间
+      inference_timeout: 30    # 图片解析需要时间
+
+# =============================================
 # 健康检查配置
 # =============================================
 health_check:

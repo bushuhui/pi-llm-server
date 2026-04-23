@@ -16,6 +16,7 @@
 - [使用方法](#使用方法)
 - [命令行工具](#命令行工具)
 - [配置说明](#配置说明)
+- [服务守护进程](#服务守护进程)
 - [API 文档](#api-文档)
 - [项目结构](#项目结构)
 - [关联项目](#关联项目)
@@ -647,6 +648,123 @@ health_check:
 
 ---
 
+## 服务守护进程
+
+PI-LLM-Server 提供独立的服务守护进程 (`service_daemon.py`)，自动监控各子服务健康状态并在服务异常时自动重启。
+
+### 主要功能
+
+| 功能 | 说明 |
+|------|------|
+| **推理健康检测** | 使用实际 API 调用验证服务可用，而非仅 HTTP 端点响应 |
+| **自动重启** | 连续失败达到阈值（默认 3 次）后自动重启服务 |
+| **服务级冷却期** | 防止服务启动期间误判为失败而触发重启 |
+| **最大重启限制** | 达到上限（默认 3 次）后停止自动重启，等待人工干预 |
+| **状态持久化** | 重启计数和状态保存在 JSON 文件，防止重启循环 |
+
+### 检测流程
+
+```
+1. HTTP 健康检查 → 调用 /health 端点
+2. 推理检测 → 调用实际 API（使用测试数据）
+3. 失败计数 → 连续失败达到阈值触发重启
+4. 冷却期 → 重启后一段时间内不进行检测
+```
+
+### 推理检测测试数据
+
+| 服务 | 测试数据 | 说明 |
+|------|----------|------|
+| Embedding | `"健康检测测试"` | 测试文本调用 Embedding API |
+| ASR | 1 秒 WAV 音频 | 16kHz, mono, 16bit 测试音频 |
+| Reranker | 测试查询 + 文档列表 | 重排序 API 测试 |
+| MinerU | 200x50 PNG 图片 | 图片解析测试 |
+
+### 守护进程管理
+
+```bash
+# 一站式启动（守护进程随 start-all 自动启动）
+pi-llm-server start-all
+
+# 单独启动守护进程
+pi-llm-server services start daemon
+
+# 查看守护进程状态
+pi-llm-server status
+
+# 停止守护进程
+pi-llm-server services stop daemon
+```
+
+### 守护进程配置
+
+配置文件 (`config.yaml`) 新增 `daemon` 配置节：
+
+```yaml
+daemon:
+  enabled: true                # 是否启用守护进程
+  check_interval: 30           # 健康检查间隔（秒）
+  http_timeout: 10             # HTTP 检查超时（秒）
+  inference_timeout: 5         # 推理检测超时（秒）
+  unhealthy_threshold: 3       # 连续失败判定阈值
+  restart_cooldown: 120        # 默认重启后冷却时间（秒）
+  max_restart_attempts: 3      # 单次最多重启尝试次数
+  services:                    # 服务级别配置覆盖
+    embedding:
+      restart_cooldown: 60     # 模型加载快
+      inference_timeout: 3     # 短文本推理快
+    asr:
+      restart_cooldown: 180    # GPU 模型加载慢
+      inference_timeout: 10    # 音频转写需要时间
+    reranker:
+      restart_cooldown: 60     # CPU 模型加载较快
+      inference_timeout: 3     # 短查询推理快
+    mineru:
+      restart_cooldown: 120    # PDF 解析服务启动需要时间
+      inference_timeout: 30    # 图片解析需要时间
+```
+
+### 配置项说明
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `enabled` | `true` | 是否启用守护进程 |
+| `check_interval` | `30` | 健康检查间隔（秒） |
+| `http_timeout` | `10` | HTTP 检查超时（秒） |
+| `inference_timeout` | `5` | 推理检测超时（秒） |
+| `unhealthy_threshold` | `3` | 连续失败多少次判定为不健康 |
+| `restart_cooldown` | `120` | 重启后冷却时间（秒），期间不检测 |
+| `max_restart_attempts` | `3` | 单次最多重启尝试，达到上限后停止 |
+
+### 服务级冷却时间
+
+各服务根据启动时间配置不同的冷却期：
+
+| 服务 | 冷却时间 | 说明 |
+|------|----------|------|
+| Embedding | 60 秒 | CPU 模型加载快 |
+| ASR | 180 秒 | GPU 模型加载慢，需要 3 分钟 |
+| Reranker | 60 秒 | CPU 模型加载较快 |
+| MinerU | 120 秒 | PDF 解析服务启动需要时间 |
+
+### 日志和状态文件
+
+```bash
+# 守护进程日志
+~/.cache/pi-llm-server/logs/daemon.log
+
+# 守护进程 PID 文件
+~/.cache/pi-llm-server/pids/daemon.pid
+
+# 守护进程状态文件（重启计数等）
+~/.cache/pi-llm-server/daemon_state.json
+
+# 查看守护进程日志
+tail -f ~/.cache/pi-llm-server/logs/daemon.log
+```
+
+---
+
 ## API 文档
 
 ### 端点列表
@@ -869,6 +987,7 @@ pi-llm-server/
 │   │   ├── asr_server.py
 │   │   ├── reranker_server.py
 │   │   ├── service_manager.py  # 服务管理器
+│   │   ├── service_daemon.py   # 服务守护进程（自动监控重启）
 │   │   └── mineru_server.sh
 │   ├── services/               # 服务实现
 │   │   ├── embedding.py
@@ -890,6 +1009,7 @@ pi-llm-server/
 │       ├── install-service.sh  # systemd 服务自动安装脚本
 │       └── pi-llm-server.service.template # systemd 服务模板
 ├── README.md                   # 项目说明
+├── CHANGELOG.md                # 变更日志
 ├── pyproject.toml              # 项目配置和依赖
 └── setup.py                    # 安装脚本（已废弃，使用 pyproject.toml）
 ```
@@ -926,6 +1046,9 @@ pi-llm-server/
 
 # 子服务日志
 ~/.cache/pi-llm-server/logs/<service>.log
+
+# 守护进程日志
+~/.cache/pi-llm-server/logs/daemon.log
 
 # 查看最新日志
 tail -f ~/.cache/pi-llm-server/logs/gateway.log

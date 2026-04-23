@@ -109,6 +109,22 @@ class HealthCheckConfig(BaseModel):
     unhealthy_threshold: int = Field(default=3, ge=1, le=10)
 
 
+class DaemonServiceConfig(BaseModel):
+    """守护进程服务级别配置"""
+    restart_cooldown: Optional[int] = Field(default=None, ge=30, le=600)
+
+
+class DaemonConfig(BaseModel):
+    """守护进程配置"""
+    enabled: bool = True
+    check_interval: int = Field(default=30, ge=5, le=300)
+    http_timeout: int = Field(default=10, ge=1, le=60)
+    unhealthy_threshold: int = Field(default=3, ge=1, le=10)
+    restart_cooldown: int = Field(default=120, ge=30, le=600)
+    max_restart_attempts: int = Field(default=3, ge=1, le=10)
+    services: Dict[str, DaemonServiceConfig] = Field(default_factory=dict)
+
+
 class Config(BaseModel):
     """主配置类"""
     server: ServerConfig = Field(default_factory=ServerConfig)
@@ -116,6 +132,7 @@ class Config(BaseModel):
     queue: QueueConfig = Field(default_factory=QueueConfig)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     health_check: HealthCheckConfig = Field(default_factory=HealthCheckConfig)
+    daemon: DaemonConfig = Field(default_factory=DaemonConfig)
 
     # 配置中心 - 所有服务配置的统一访问点
     _service_configs: Dict[str, ServiceConfig] = {}

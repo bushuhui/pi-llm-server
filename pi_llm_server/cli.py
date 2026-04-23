@@ -167,7 +167,12 @@ def show_full_status():
         pid = get_service_pid(name)
         pid_str = f"(PID: {pid})" if pid else ""
         symbol = "✓" if is_service_running(name) else "✗"
-        print(f"  {symbol} {cfg['name']:20s} {status:10s} 端口：{cfg['port']:5d} {pid_str}")
+
+        # 守护进程没有端口
+        if cfg['port']:
+            print(f"  {symbol} {cfg['name']:20s} {status:10s} 端口：{cfg['port']:5d} {pid_str}")
+        else:
+            print(f"  {symbol} {cfg['name']:20s} {status:10s} {pid_str}")
 
     print()
     print("=" * 60)

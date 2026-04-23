@@ -66,6 +66,11 @@ SERVICE_CONFIG = {
         'port': 8094,
         'name': 'MinerU Server',
     },
+    'daemon': {
+        'script': 'service_daemon.py',
+        'port': None,  # 守护进程没有 HTTP 端口
+        'name': 'Service Daemon',
+    },
 }
 
 # 用户目录
@@ -169,6 +174,11 @@ def is_service_running(service_name: str) -> bool:
     if not config:
         return False
 
+    # 守护进程特殊处理
+    if service_name == 'daemon':
+        from pi_llm_server.launcher.service_daemon import is_daemon_running
+        return is_daemon_running()
+
     port = config['port']
 
     # 方法 1: 检查 PID 文件
@@ -213,6 +223,11 @@ def start_service(service_name: str, background: bool = True, config: Dict[str, 
     if not service_config:
         print(f"错误：未知服务 '{service_name}'")
         return False
+
+    # 守护进程特殊处理
+    if service_name == 'daemon':
+        from pi_llm_server.launcher.service_daemon import start_daemon_background
+        return start_daemon_background(config)
 
     if is_service_running(service_name):
         print(f"✓ {service_config['name']} 已在运行")
@@ -317,6 +332,11 @@ def stop_service(service_name: str) -> bool:
         print(f"错误：未知服务 '{service_name}'")
         return False
 
+    # 守护进程特殊处理
+    if service_name == 'daemon':
+        from pi_llm_server.launcher.service_daemon import stop_daemon
+        return stop_daemon()
+
     if not is_service_running(service_name):
         print(f"✓ {config['name']} 未运行")
         return True
@@ -379,7 +399,12 @@ def show_status():
         pid = get_service_pid(name)
         pid_str = f"(PID: {pid})" if pid else ""
         symbol = "✓" if is_service_running(name) else "✗"
-        print(f"  {symbol} {cfg['name']:20s} {status:10s} 端口：{cfg['port']:5d} {pid_str}")
+
+        # 守护进程没有端口
+        if cfg['port']:
+            print(f"  {symbol} {cfg['name']:20s} {status:10s} 端口：{cfg['port']:5d} {pid_str}")
+        else:
+            print(f"  {symbol} {cfg['name']:20s} {status:10s} {pid_str}")
 
     print()
     print("=" * 60)
@@ -398,14 +423,24 @@ def start_all():
     print("正在启动所有后台服务...")
     print()
 
-    # 启动子服务
+    # 启动子服务（不包括守护进程）
     for name in ['embedding', 'asr', 'reranker', 'mineru']:
         start_service(name, config=config)
+
+    # 最后启动守护进程（监控其他服务）
+    print()
+    print("启动服务守护进程...")
+    start_service('daemon', config=config)
 
 
 def stop_all():
     """停止所有后台服务"""
     print("正在停止所有后台服务...")
+    print()
+
+    # 先停止守护进程（避免在停止过程中尝试重启）
+    stop_service('daemon')
+
     print()
 
     # 停止子服务（按依赖顺序：先启动的后停止）

@@ -5,6 +5,76 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.1.7] - 2026-04-23
+
+### Added
+
+- **独立服务守护进程 (`service_daemon.py`)**:
+  - 新增独立进程监控器，定期检查各子服务健康状态
+  - 使用推理检测验证服务真正可用，而非仅 HTTP 端点响应
+  - 检测连续失败超过阈值（默认 3 次）后自动重启服务
+  - 最大重启限制（默认 3 次），达到上限后停止自动重启等待人工干预
+  - 重启计数和状态持久化保存，防止重启循环
+
+- **推理健康检测**:
+  - Embedding: 使用测试文本 `"健康检测测试"` 调用实际 API
+  - ASR: 生成 1 秒测试音频（16kHz, mono, 16bit WAV）调用转写 API
+  - Reranker: 使用测试查询和文档调用重排序 API
+  - MinerU: 生成测试图片（200x50 PNG）调用解析 API
+
+- **服务级冷却期配置**:
+  - 防止服务启动期间被误判为失败而触发重启
+  - 各服务独立配置冷却时间：
+    - Embedding/Reranker: 60 秒（模型加载快）
+    - ASR: 180 秒（GPU 模型加载慢）
+    - MinerU: 120 秒（PDF 解析服务启动需要时间）
+
+- **守护进程配置项** (`config.yaml` 新增 `daemon` 配置节):
+  - `check_interval`: 健康检查间隔（默认 30 秒）
+  - `http_timeout`: HTTP 检查超时（默认 10 秒）
+  - `inference_timeout`: 推理检测超时（默认 5 秒）
+  - `unhealthy_threshold`: 连续失败判定阈值（默认 3 次）
+  - `restart_cooldown`: 重启后冷却时间（默认 120 秒）
+  - `max_restart_attempts`: 单次最多重启尝试（默认 3 次）
+  - `services`: 服务级别配置覆盖
+
+### Changed
+
+- **`pi_llm_server/launcher/service_manager.py`**:
+  - 新增 'daemon' 到 SERVICE_CONFIG
+  - 修改 `is_service_running()`, `start_service()`, `stop_service()`, `show_status()` 支持守护进程
+  - `start_all()` 最后启动守护进程（在其他服务之后）
+  - `stop_all()` 首先停止守护进程（在其他服务之前）
+
+- **`pi_llm_server/config.py`**:
+  - 新增 `DaemonServiceConfig` 类（服务级别守护进程配置）
+  - 新增 `DaemonConfig` 类（守护进程全局配置）
+  - 新增 `inference_timeout` 配置项
+
+- **`pi_llm_server/cli.py`**:
+  - 更新 `show_full_status()` 显示守护进程状态
+
+- **`pi_llm_server/examples/config.example.yaml`**:
+  - 新增完整的 `daemon` 配置节示例
+
+### Technical Details
+
+- **检测流程**:
+  1. 首先进行 HTTP 健康检查（调用 `/health` 端点）
+  2. HTTP 成功后进行推理检测（调用实际 API）
+  3. 连续失败计数达到阈值触发重启
+  4. 重启后进入冷却期，期间不进行检测
+
+- **测试数据生成**:
+  - WAV 音频: 使用 `struct.pack` 手动构造，32044 字节（1 秒，16kHz, mono, 16bit）
+  - PNG 图片: 使用 PIL 生成，510 字节（200x50 像素）
+
+- **状态持久化**:
+  - 状态文件: `~/.cache/pi-llm-server/daemon_state.json`
+  - 记录各服务重启次数、最后重启时间、冷却期状态
+
+---
+
 ## [1.1.6] - 2026-04-09
 
 ### Added
@@ -307,6 +377,8 @@
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| 1.1.7 | 2026-04-23 | 独立服务守护进程、推理健康检测、服务级冷却期配置 |
+| 1.1.6 | 2026-04-09 | MinerU OCR 多格式文档支持、libreoffice 文档转换 |
 | 1.1.5 | 2026-03-23 | 版本号统一管理、systemd 服务自动部署、examples 目录重构、README 全面更新 |
 | 1.1.4 | 2026-03-20 | MinerU API 路径修复，README 文档完善 |
 | 1.1.3 | 2026-03-20 | API 路径修复，示例程序更新 |
@@ -318,4 +390,4 @@
 ---
 
 
-*最后更新：2026-03-23 (v1.1.5)*
+*最后更新：2026-04-23 (v1.1.7)*
