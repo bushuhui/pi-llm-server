@@ -273,33 +273,26 @@ def transcribe_audio(
             logger.info("音频较短，直接处理")
             segments = [(0, len(audio_array), audio_array)]
 
-        # 保存片段到临时目录
-        tmp_dir = os.path.expanduser("~/.cache/pi-llm-server/tmp")
-        os.makedirs(tmp_dir, exist_ok=True)
-
-        chunk_paths = []
+        # 准备音频片段（直接传 numpy 数组，不写临时文件）
+        chunk_data = []
         for idx, (start, end, chunk) in enumerate(segments):
-            # 检查取消
             if cancel_event and cancel_event.is_set():
                 logger.info("任务已取消，清理临时文件")
                 raise TranscriptionCancelled("客户端取消任务")
+            chunk_data.append((chunk, start, end))
 
-            path = os.path.join(tmp_dir, f"chunk_{idx}.wav")
-            save_audio_chunk(chunk, path)
-            chunk_paths.append((path, start, end))
-
-        logger.info(f"已保存 {len(chunk_paths)} 个音频片段")
+        logger.info(f"已准备 {len(chunk_data)} 个音频片段（numpy 数组，无需临时文件）")
 
         # 顺序转写
         results = []
         languages = []
-        total_chunks = len(chunk_paths)
+        total_chunks = len(chunk_data)
         completed = 0
 
         logger.info("开始转写...")
         start_time = time.time()
 
-        for idx, (chunk_path, start_sample, end_sample) in enumerate(chunk_paths):
+        for idx, (chunk_audio, start_sample, end_sample) in enumerate(chunk_data):
             # 检查取消
             if cancel_event and cancel_event.is_set():
                 logger.info("任务已取消，清理临时文件")
@@ -307,7 +300,8 @@ def transcribe_audio(
 
             try:
                 chunk_start = time.time()
-                result_obj = model.transcribe(audio=chunk_path)
+                # 直接传 (numpy_array, sample_rate) 元组，避免临时文件被模型内部清理机制删除
+                result_obj = model.transcribe(audio=(chunk_audio, 16000))
                 text = result_obj[0].text
                 language = result_obj[0].language
 
@@ -339,7 +333,7 @@ def transcribe_audio(
 
         result.text = full_transcript
         result.language = detected_language
-        result.segments_count = len(chunk_paths)
+        result.segments_count = len(chunk_data)
 
         # 记录详细片段信息
         for idx, text, start, end in results:
@@ -367,10 +361,6 @@ def transcribe_audio(
             results_for_srt = [(idx, text) for idx, text, _, _ in results]
             _generate_srt(segments_for_srt, results_for_srt, srt_file)
             logger.info(f"SRT 字幕已保存到：{srt_file}")
-
-        # 清理临时文件
-        if os.path.exists(tmp_dir):
-            shutil.rmtree(tmp_dir)
 
         return result
 
