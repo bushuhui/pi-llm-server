@@ -11,6 +11,7 @@ from .embedding import EmbeddingService, init_embedding_service, get_embedding_s
 from .reranker import RerankerService, init_reranker_service, get_reranker_service
 from .asr import ASRService, init_asr_service, get_asr_service
 from .mineru import MinerUService, init_mineru_service, get_mineru_service
+from .memory import MemoryService, init_memory_service, get_memory_service
 
 __all__ = [
     "EmbeddingService",
@@ -25,4 +26,7 @@ __all__ = [
     "MinerUService",
     "init_mineru_service",
     "get_mineru_service",
+    "MemoryService",
+    "init_memory_service",
+    "get_memory_service",
 ]

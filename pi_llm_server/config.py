@@ -71,6 +71,15 @@ class ServerConfig(BaseModel):
     log_level: str = "info"
 
 
+class MemoryServiceConfig(BaseModel):
+    """pi-memory 服务配置"""
+    enabled: bool = True
+    base_url: str = "http://agent.adv-ci.com:9873"
+    timeout_seconds: int = Field(default=30, ge=1, le=120)
+    max_retries: int = Field(default=3, ge=0, le=10)
+    api_key: Optional[str] = None
+
+
 class ServiceConfig(BaseModel):
     """子服务配置"""
     enabled: bool = True
@@ -81,6 +90,7 @@ class ServiceConfig(BaseModel):
     launch_script: Optional[str] = None
     working_directory: Optional[str] = None
     config: Dict[str, Any] = Field(default_factory=dict)
+    api_key: Optional[str] = None
 
     @field_validator("working_directory", mode="before")
     @classmethod
@@ -99,6 +109,7 @@ class ServicesConfig(BaseModel):
     asr: Optional[ServiceConfig] = None
     reranker: Optional[ServiceConfig] = None
     mineru: Optional[ServiceConfig] = None
+    memory: Optional[MemoryServiceConfig] = None
 
 
 class HealthCheckConfig(BaseModel):
@@ -135,7 +146,7 @@ class Config(BaseModel):
     daemon: DaemonConfig = Field(default_factory=DaemonConfig)
 
     # 配置中心 - 所有服务配置的统一访问点
-    _service_configs: Dict[str, ServiceConfig] = {}
+    _service_configs: Dict[str, Any] = {}
 
     def get_service_config(self, service_name: str) -> Optional[ServiceConfig]:
         """获取指定服务的配置"""
@@ -166,6 +177,8 @@ class Config(BaseModel):
             self._service_configs["reranker"] = self.services.reranker
         if self.services.mineru:
             self._service_configs["mineru"] = self.services.mineru
+        if self.services.memory:
+            self._service_configs["memory"] = self.services.memory
 
 
 class ConfigManager:

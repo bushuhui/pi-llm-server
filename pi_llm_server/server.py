@@ -24,10 +24,12 @@ from pi_llm_server.services import (
     init_reranker_service,
     init_asr_service,
     init_mineru_service,
+    init_memory_service,
     get_embedding_service,
     get_reranker_service,
     get_asr_service,
     get_mineru_service,
+    get_memory_service,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,6 +100,12 @@ async def lifespan(app: FastAPI):
     try:
         mineru_svc = get_mineru_service()
         await mineru_svc.close()
+    except RuntimeError:
+        pass
+
+    try:
+        memory_svc = get_memory_service()
+        await memory_svc.close()
     except RuntimeError:
         pass
 
@@ -220,7 +228,7 @@ async def list_models():
 
     # 从各服务获取模型列表
     services = []
-    for get_svc in [get_embedding_service, get_reranker_service, get_asr_service, get_mineru_service]:
+    for get_svc in [get_embedding_service, get_reranker_service, get_asr_service, get_mineru_service, get_memory_service]:
         try:
             services.append(get_svc())
         except RuntimeError:
@@ -249,6 +257,7 @@ def register_services():
         ("reranker", get_reranker_service),
         ("asr", get_asr_service),
         ("mineru", get_mineru_service),
+        ("memory", get_memory_service),
     ]:
         try:
             services.append((name, get_svc()))
@@ -342,6 +351,9 @@ def initialize_services(cfg: ConfigManager):
 
     if cfg.get_service_config("mineru"):
         init_mineru_service(cfg.get_service_config("mineru"))
+
+    if cfg.get_service_config("memory"):
+        init_memory_service(cfg.get_service_config("memory"))
 
     # 注册服务路由
     register_services()

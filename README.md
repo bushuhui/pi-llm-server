@@ -4,7 +4,7 @@
 
 **问题背景**: 阿里云等 Coding Plan 产品提供了大模型 API，但未包含 Embedding、Reranker、ASR、OCR 等辅助服务。这些模型通常较小，可本地部署以获得更低延迟和更好的隐私保护。
 
-**解决方案**: PI-LLM-Server 统一管理多种本地服务，提供标准化 API 网关，为 AI 编程助手提供一站式服务接入。
+**解决方案**: PI-LLM-Server 统一管理多种本地服务，提供标准化 API 网关，为 AI 编程助手提供一站式服务接入。还支持接入 pi-memory 记忆管理和知识库搜索服务。
 
 ---
 
@@ -532,6 +532,8 @@ pi-llm-server --config ~/.config/pi-llm-server/config.yaml
 | `queue.default.timeout_seconds` | 默认超时时间 | `300` |
 | `services.*.enabled` | 是否启用子服务 | `true` |
 | `services.*.base_url` | 子服务地址 | 需配置 |
+| `services.memory.base_url` | pi-memory 服务地址 | `http://agent.adv-ci.com:9873` |
+| `services.memory.api_key` | pi-memory API Key | 无 |
 | `health_check.enabled` | 是否启用健康检查 | `true` |
 | `health_check.interval_seconds` | 健康检查间隔 | `30` |
 | `health_check.unhealthy_threshold` | 不健康判定阈值 | `3` |
@@ -617,6 +619,14 @@ services:
       vram: "9000"
       model_source: "modelscope"
 
+  # pi-memory 服务代理（可选，不写此节不会初始化）
+  memory:
+    enabled: true
+    base_url: "http://agent.adv-ci.com:9873"
+    timeout_seconds: 30
+    max_retries: 3
+    api_key: ""
+
 # =============================================
 # 健康检查配置
 # =============================================
@@ -645,6 +655,7 @@ health_check:
 | ASR | 8092 | 语音识别 |
 | Reranker | 8093 | 文档重排序 |
 | MinerU | 8094 | PDF 解析 |
+| pi-memory | 9873 | 记忆管理 + 知识库（独立部署） |
 
 ---
 
@@ -779,6 +790,15 @@ tail -f ~/.cache/pi-llm-server/logs/daemon.log
 | `/v1/rerank` | POST | 文档重排序 | 是 |
 | `/v1/audio/transcriptions` | POST | 语音转文字 | 是 |
 | `/v1/ocr/parser` | POST | PDF 解析 | 是 |
+| `/memory/api/memory/search` | POST | 记忆搜索 | 是 |
+| `/memory/api/memory/store` | POST | 存储记忆 | 是 |
+| `/memory/api/memory/{id}` | DELETE | 删除记忆 | 是 |
+| `/memory/api/memory/{id}` | PATCH | 更新记忆 | 是 |
+| `/memory/api/memory/list` | GET | 记忆列表 | 是 |
+| `/memory/api/memory/stats` | GET | 记忆统计 | 是 |
+| `/memory/api/knowledge/search` | POST | 知识库搜索 | 是 |
+| `/memory/api/knowledge/index` | POST | 重建知识库索引 | 是 |
+| `/memory/api/knowledge/stats` | GET | 知识库统计 | 是 |
 | `/docs` | GET | Swagger 文档 | 否 |
 
 ### API 使用示例
@@ -910,6 +930,26 @@ sudo yum install libreoffice
 | `return_md` | true | 返回 Markdown |
 | `return_images` | true | 返回图片 |
 
+#### 5. pi-memory 记忆搜索
+
+**请求**:
+```bash
+curl -X POST http://localhost:8090/memory/api/memory/search \
+  -H "Authorization: Bearer sk-your-token" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "用户偏好设置", "limit": 5}'
+```
+
+#### 6. pi-memory 知识库搜索
+
+**请求**:
+```bash
+curl -X POST http://localhost:8090/memory/api/knowledge/search \
+  -H "Authorization: Bearer sk-your-token" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "无人机控制", "limit": 10}'
+```
+
 ---
 
 ## 关联项目
@@ -956,18 +996,18 @@ sudo yum install libreoffice
 │  网关服务        │
 └────────┬────────┘
          │
-    ┌────┼────┬─────────┬──────────┐
-    ▼    ▼    ▼         ▼          ▼
-┌────────┐ ┌─────┐ ┌────────┐ ┌────────┐
-│Embedding│ │ ASR │ │Reranker│ │ MinerU │
-│ :8091  │ │:8092│ │ :8093  │ │ :8094  │
-└────────┘ └─────┘ └────────┘ └────────┘
-     │        │        │          │
-     ▼        ▼        ▼          ▼
-┌─────────┐ ┌─────┐ ┌────────┐ ┌────────┐
-│Qwen3-   │ │Qwen3│ │Qwen3-  │ │MinerU  │
-│Embedding│ │-ASR │ │Reranker│ │VLM     │
-└─────────┘ └─────┘ └────────┘ └────────┘
+    ┌────┼────┬─────────┬──────────┬──────────┐
+    ▼    ▼    ▼         ▼          ▼          ▼
+┌────────┐ ┌─────┐ ┌────────┐ ┌────────┐ ┌──────────┐
+│Embedding│ │ ASR │ │Reranker│ │ MinerU │ │pi-memory │
+│ :8091  │ │:8092│ │ :8093  │ │ :8094  │ │  :9873   │
+└────────┘ └─────┘ └────────┘ └────────┘ └──────────┘
+     │        │        │          │          │
+     ▼        ▼        ▼          ▼          ▼
+┌─────────┐ ┌─────┐ ┌────────┐ ┌────────┐ ┌──────────┐
+│Qwen3-   │ │Qwen3│ │Qwen3-  │ │MinerU  │ │pi-memory │
+│Embedding│ │-ASR │ │Reranker│ │VLM     │ │Server    │
+└─────────┘ └─────┘ └────────┘ └────────┘ └──────────┘
 ```
 
 ---

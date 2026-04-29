@@ -97,6 +97,15 @@ services:
       vram: "9000"          # 显存限制 (MB)，根据显卡调整 (2080Ti 建议 9000-11000)
       model_source: "modelscope"  # huggingface / modelscope / local（国内建议 modelscope）
 
+  # pi-memory 服务代理（记忆管理 + 知识库搜索）
+  # 不写此节时不会初始化代理服务；写 memory: {} 时使用全部默认值
+  memory:
+    enabled: true
+    base_url: "http://agent.adv-ci.com:9873"  # pi-memory 服务地址
+    timeout_seconds: 30
+    max_retries: 3
+    api_key: ""             # pi-memory API Key，未开启认证时留空
+
 # =============================================
 # 服务守护进程配置
 # =============================================
