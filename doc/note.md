@@ -6,7 +6,7 @@
 - [ ] 将实验室的 OpenClaw 也做成一个API，这样其他的程序就可以调用 OpenClaw 检索知识，执行命令等
   - [ ] graphify 等也可以转化成统一API接口，检索，查询
 
-
+- [x] 增加 pi-memory 的代理接口
 - [x] 修正 rerank 程序总是退出的问题 （好像又消失了？）
 - [x] 修改 embedding API服务程序，默认输出 base64 的输出， 就是输入参数 `encoding_format` 没有指定的情况下。并使用JavaScript的openai库测试输出的base64数据的格式是否正确
 - [x] PI-LLM OCR 增加接收 docx, doc, ppt, pptx, xls, xlsx等文件的功能
