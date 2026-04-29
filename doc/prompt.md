@@ -222,3 +222,13 @@ mineru的后台服务，或者服务的ocr接口处，增加接收 docx, doc, pp
   - 优点：职责分离，网关保持简单
   - 缺点：需要额外进程
 帮我按照方案B，改进程序。不过 service_daemon.py 进程监控器由谁来启动？
+
+
+## 2026-04-29
+
+你仔细读一下 pi-memory服务器的API接口文档 /home/bushuhui/pi-lab/0_ai_agent/rag-memory/pi-memory/docs/server_mcp_api.md 。默认的访问地址是 http://agent.adv-ci.com:9873
+你帮我想想能否在 pi-llm-server 里面增加 pi-memory 的API代理。先不写程序，先把方案，具体的做法想清楚。把方案等整理保存到 doc/pi-memory-proxy.md
+
+另外，也把 memory 的配置写法，增加到 pi_llm_server/examples/config.example.yaml
+
+
