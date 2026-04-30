@@ -39,6 +39,7 @@ ENV/
 *.swo
 *~
 .DS_Store
+.claude
 
 # Logs (项目本地 logs/ 已废弃，日志使用用户目录 ~/.cache/pi-llm-server/logs/)
 logs/
