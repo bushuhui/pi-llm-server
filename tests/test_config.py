@@ -45,7 +45,7 @@ class TestConfigManager:
 
         # 检查 asr 队列配置
         asr_queue = config.get_queue_config("asr")
-        assert asr_queue.max_concurrent == 1
+        assert asr_queue.max_concurrent == 3
         assert asr_queue.max_size == 50
 
     def test_service_config(self):

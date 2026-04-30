@@ -40,7 +40,7 @@ queue:
       max_size: 200
       timeout_seconds: 120
     asr:
-      max_concurrent: 1      # GPU 推理，顺序处理避免显存溢出
+      max_concurrent: 3      # GPU 推理，vLLM continuous batching 支持并发
       max_size: 50
       timeout_seconds: 600
     mineru:

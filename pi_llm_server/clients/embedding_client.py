@@ -212,21 +212,23 @@ def test_embedding_batch(base_url: str, model: str, test_data: list = None):
     embeddings = []
 
     try:
-        # 为每个文本生成 embedding
-        for i, text in enumerate(test_data):
-            payload = {
-                "model": model,
-                "input": text
-            }
-            response = requests.post(url, json=payload, timeout=60)
-            response.raise_for_status()
-            result = response.json()
-            embedding = result.get('data', [{}])[0].get('embedding', [])
+        # 使用 batch 接口一次性获取所有 embedding
+        logger.info("使用 batch 接口请求...")
+        payload = {
+            "model": model,
+            "input": test_data
+        }
+        response = requests.post(url, json=payload, timeout=60)
+        response.raise_for_status()
+        result = response.json()
+
+        for i, item in enumerate(result.get('data', [])):
+            embedding = item.get('embedding', [])
             embeddings.append({
-                'text': text,
+                'text': test_data[item.get('index', i)],
                 'embedding': embedding
             })
-            logger.info(f"  [{i+1}/{len(test_data)}] {text[:30]}... -> 维度：{len(embedding)}")
+            logger.info(f"  [{i+1}/{len(test_data)}] {test_data[item.get('index', i)][:30]}... -> 维度：{len(embedding)}")
 
         # 计算相似度矩阵
         logger.info("相似度矩阵:")
@@ -344,15 +346,19 @@ def test_embedding_search(base_url: str, model: str, query: str, documents: list
         response.raise_for_status()
         query_embedding = response.json().get('data', [{}])[0].get('embedding', [])
 
-        # 生成所有文档向量
+        # 使用 batch 接口一次性获取所有文档向量
+        logger.info("使用 batch 接口请求文档向量...")
+        payload = {"model": model, "input": documents}
+        response = requests.post(url, json=payload, timeout=60)
+        response.raise_for_status()
+        result = response.json()
+
         doc_embeddings = []
-        for doc in documents:
-            payload = {"model": model, "input": doc}
-            response = requests.post(url, json=payload, timeout=60)
-            response.raise_for_status()
-            embedding = response.json().get('data', [{}])[0].get('embedding', [])
-            doc_embeddings.append({'text': doc, 'embedding': embedding})
-            logger.info(f"已处理文档：{doc[:30]}... -> 维度：{len(embedding)}")
+        for item in result.get('data', []):
+            embedding = item.get('embedding', [])
+            idx = item.get('index', 0)
+            doc_embeddings.append({'text': documents[idx], 'embedding': embedding})
+            logger.info(f"已处理文档：{documents[idx][:30]}... -> 维度：{len(embedding)}")
 
         # 计算相似度并排序
         results = []

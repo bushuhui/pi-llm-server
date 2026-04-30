@@ -103,11 +103,11 @@ class TestInitQueueManager:
         """测试初始化队列管理器"""
         configs = {
             "embedding": ServiceQueueConfig(max_concurrent=4),
-            "asr": ServiceQueueConfig(max_concurrent=1),
+            "asr": ServiceQueueConfig(max_concurrent=3),
         }
         qm = init_queue_manager(configs)
 
         assert qm.get_queue("embedding") is not None
         assert qm.get_queue("asr") is not None
         assert qm.get_queue("embedding").config.max_concurrent == 4
-        assert qm.get_queue("asr").config.max_concurrent == 1
+        assert qm.get_queue("asr").config.max_concurrent == 3
