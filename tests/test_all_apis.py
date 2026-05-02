@@ -150,6 +150,37 @@ async def test_mineru():
 
 
 @pytest.mark.asyncio
+async def test_mineru_docx():
+    """测试通过网关 API 解析 .docx 文件"""
+    docx_path = DATA_DIR / "test.docx"
+    if not os.path.exists(docx_path):
+        report("MinerU (DOCX)", False, "no test docx file")
+        pytest.skip("no test docx file")
+    try:
+        async with httpx.AsyncClient(timeout=300) as c:
+            t0 = time.time()
+            with open(docx_path, "rb") as f:
+                r = await c.post(
+                    f"{BASE}/v1/ocr/parser",
+                    headers=HEADERS,
+                    files={"files": ("test.docx", f, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+                    data={
+                        "backend": "pipeline",
+                        "parse_method": "auto",
+                        "lang_list": "ch",
+                        "return_md": "true",
+                        "return_images": "true",
+                    },
+                )
+            ok = r.status_code == 200 and len(r.content) > 1000
+            report("MinerU (DOCX)", ok, f"{len(r.content)/1024:.1f} KB, {time.time()-t0:.1f}s")
+            assert ok, f"mineru docx failed: status={r.status_code}, len={len(r.content)}"
+    except Exception as e:
+        report("MinerU (DOCX)", False, str(e)[:40])
+        raise
+
+
+@pytest.mark.asyncio
 async def test_memory():
     try:
         async with httpx.AsyncClient(timeout=10) as c:

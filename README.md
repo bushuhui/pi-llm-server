@@ -71,6 +71,12 @@ uv pip install -e ".[embedding,reranker,asr,mineru]"
 
 ### 3. 系统依赖
 
+#### 其他软件包
+```bash
+sudo apt-get install -y libreoffice-java-common
+```
+
+
 #### CUDA Toolkit 安装（需要 GPU 时使用）
 
 ```bash
