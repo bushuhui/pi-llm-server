@@ -88,27 +88,54 @@ async def convert_to_pdf(file_content: bytes, filename: str) -> bytes:
             f.write(file_content)
 
         # 使用 libreoffice 转换为 PDF
+        # 关键修复：
+        # 1. 使用独立用户目录 (--env:UserInstallation) 避免多进程冲突
+        # 2. 增加超时到 300 秒（5 分钟），复杂文档需要更长时间
+        # 3. 超时后自动杀进程，避免僵尸残留
+        proc = None
         try:
             logger.info(f"正在使用 libreoffice 转换文件：{filename} -> PDF")
 
-            result = subprocess.run(
+            # 为每个转换创建独立的临时用户目录，避免 libreoffice 多实例锁冲突
+            user_dir = os.path.join(temp_dir, "lo_user_profile")
+            os.makedirs(user_dir, exist_ok=True)
+
+            proc = subprocess.Popen(
                 [
                     "libreoffice",
                     "--headless",
+                    "--norestore",
+                    "--nologo",
+                    "--nofirststartwizard",
+                    f"-env:UserInstallation=file://{user_dir}",
                     "--convert-to", "pdf",
                     "--outdir", temp_dir,
                     input_path,
                 ],
-                capture_output=True,
-                text=True,
-                timeout=120,  # 2 分钟超时
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                cwd=temp_dir,
             )
 
-            if result.returncode != 0:
-                logger.error(f"libreoffice 转换失败：{result.stderr}")
+            try:
+                stdout, stderr = proc.communicate(timeout=300)  # 5 分钟超时
+            except subprocess.TimeoutExpired:
+                # 超时后杀进程树，避免残留僵尸
+                import signal
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                proc.kill()
+                logger.error(f"libreoffice 转换超时（文件: {filename}）")
+                raise HTTPException(
+                    status_code=504,
+                    detail="Office 文档转换超时"
+                )
+
+            if proc.returncode != 0:
+                err_msg = stderr.decode('utf-8', errors='replace')[:500]
+                logger.error(f"libreoffice 转换失败：{err_msg}")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Office 文档转换失败：{result.stderr}"
+                    detail=f"Office 文档转换失败：{err_msg}"
                 )
 
             # 读取生成的 PDF 文件
@@ -128,12 +155,11 @@ async def convert_to_pdf(file_content: bytes, filename: str) -> bytes:
             logger.info(f"文件转换成功：{filename} -> {pdf_filename}")
             return pdf_content
 
+        except HTTPException:
+            raise
         except subprocess.TimeoutExpired:
-            logger.error("libreoffice 转换超时")
-            raise HTTPException(
-                status_code=504,
-                detail="Office 文档转换超时"
-            )
+            # 上面已经处理，重新抛出
+            raise
         except FileNotFoundError:
             logger.error("未找到 libreoffice，请安装：sudo apt-get install libreoffice")
             raise HTTPException(
@@ -141,6 +167,8 @@ async def convert_to_pdf(file_content: bytes, filename: str) -> bytes:
                 detail="服务器未安装 libreoffice，无法转换 Office 文档"
             )
         except Exception as e:
+            if proc and proc.poll() is None:
+                proc.kill()
             logger.error(f"文件转换失败：{e}")
             raise HTTPException(
                 status_code=500,
