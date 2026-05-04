@@ -97,6 +97,7 @@ SERVICE_COOLDOWN_DEFAULTS = {
     'asr': 180,         # GPU模型加载慢，需要3分钟
     'reranker': 60,     # CPU模型加载较快
     'mineru': 120,      # PDF解析服务启动需要时间
+    'gateway': 30,      # 网关无模型，启动快
 }
 
 # 子服务端口配置（从配置文件动态读取）
@@ -105,6 +106,7 @@ SERVICE_PORTS = {
     'asr': 8092,
     'reranker': 8093,
     'mineru': 8094,
+    'gateway': 8090,
 }
 
 # 推理检测超时配置（服务级别）
@@ -113,6 +115,7 @@ INFERENCE_TIMEOUT_DEFAULTS = {
     'asr': 10,          # 音频转写需要时间
     'reranker': 3,      # 短查询推理快
     'mineru': 60,       # 图片解析需要时间（模型初始化 ~27s + 处理）
+    'gateway': 5,       # 仅做 HTTP 检测，无推理
 }
 
 
@@ -301,7 +304,7 @@ class ServiceDaemon:
         default_cooldown = daemon_cfg.get('restart_cooldown', DEFAULT_DAEMON_CONFIG['restart_cooldown'])
         services_cfg = daemon_cfg.get('services', {})
 
-        for name in ['embedding', 'asr', 'reranker', 'mineru']:
+        for name in ['embedding', 'asr', 'reranker', 'mineru', 'gateway']:
             if services_cfg and name in services_cfg:
                 svc_cfg = services_cfg[name]
                 cooldown = svc_cfg.get('restart_cooldown', SERVICE_COOLDOWN_DEFAULTS.get(name, default_cooldown))
@@ -331,8 +334,19 @@ class ServiceDaemon:
                 self.service_states[name] = ServiceState(name)
                 logger.info(f"监控服务: {name} (默认端口 {SERVICE_PORTS[name]})")
 
+        # Gateway 监控（端口从 server 配置读取）
+        server_cfg = self.config.get('server', {})
+        gateway_port = server_cfg.get('port', SERVICE_PORTS.get('gateway', 8090))
+        SERVICE_PORTS['gateway'] = gateway_port
+        self.service_states['gateway'] = ServiceState('gateway')
+        logger.info(f"监控服务: gateway (端口 {gateway_port})")
+
     def _get_service_port(self, name: str) -> int:
         """获取服务端口"""
+        if name == 'gateway':
+            server_cfg = self.config.get('server', {})
+            return server_cfg.get('port', SERVICE_PORTS.get('gateway', 8090))
+
         services_cfg = self.config.get('services', {})
         svc_cfg = services_cfg.get(name, {})
         if svc_cfg.get('base_url'):
@@ -436,7 +450,8 @@ class ServiceDaemon:
             return False
 
         # MinerU 没有轻量推理端点，HTTP 检测 (/openapi.json) 已足够
-        if name == 'mineru':
+        # Gateway 仅做 HTTP /health 检测，不做推理（推理由各子服务自行检测）
+        if name in ('mineru', 'gateway'):
             return True
 
         # Step 2: 推理检测
@@ -470,8 +485,15 @@ class ServiceDaemon:
         logger.info(f"正在重启服务: {name}")
 
         try:
-            from pi_llm_server.launcher.service_manager import restart_service
-            success = restart_service(name, config=self.config)
+            if name == 'gateway':
+                # Gateway 由 cli 模块管理，单独处理
+                from pi_llm_server.cli import stop_gateway, start_gateway_background
+                stop_gateway()
+                await asyncio.sleep(1)
+                success = start_gateway_background()
+            else:
+                from pi_llm_server.launcher.service_manager import restart_service
+                success = restart_service(name, config=self.config)
 
             if success:
                 state = self.service_states.get(name)

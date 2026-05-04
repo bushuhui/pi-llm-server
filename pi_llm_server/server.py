@@ -1,7 +1,12 @@
 """
 PI-LLM-Server FastAPI 应用定义
 """
+import glob
 import logging
+import os
+import shutil
+import tempfile
+import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -42,6 +47,25 @@ queue_manager: Optional[QueueManager] = None
 health_monitor: Optional[HealthMonitor] = None
 
 
+def _cleanup_service_temp_residuals():
+    """清理 /tmp 下残留的 mineru_ 和 asr_ 临时目录（只删超过 1 小时的）"""
+    tmp_dir = tempfile.gettempdir()
+    now = time.time()
+    max_age = 3600  # 1 小时
+
+    for prefix in ("mineru_", "asr_"):
+        pattern = os.path.join(tmp_dir, f"{prefix}*")
+        for path in glob.glob(pattern):
+            if not os.path.isdir(path):
+                continue
+            try:
+                if now - os.path.getmtime(path) > max_age:
+                    shutil.rmtree(path, ignore_errors=True)
+                    logger.info(f"清理残留临时目录: {path}")
+            except Exception as e:
+                logger.warning(f"清理残留临时目录失败 {path}: {e}")
+
+
 # ============ 生命周期管理 ============
 
 @asynccontextmanager
@@ -55,6 +79,9 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
     logger.info("PI-LLM-Server 启动中...")
     logger.info("=" * 60)
+
+    # 清理残留临时目录
+    _cleanup_service_temp_residuals()
 
     # 初始化健康监控后台任务
     if health_monitor and config_manager.config.health_check.enabled:

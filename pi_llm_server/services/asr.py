@@ -10,6 +10,9 @@ ASR 语音识别服务模块
 
 import httpx
 import logging
+import os
+import shutil
+import tempfile
 from typing import Optional, List, Union
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
@@ -18,6 +21,10 @@ from pydantic import BaseModel, Field
 from ..config import ServiceConfig
 
 logger = logging.getLogger(__name__)
+
+
+# 流式传输块大小（64KB）
+CHUNK_SIZE = 64 * 1024
 
 
 # ============ 请求/响应模型 ============
@@ -96,6 +103,9 @@ class ASRService:
         """
         语音识别 - form-data 方式
 
+        上传文件流式落盘，再以磁盘文件流式转发到后端，
+        避免完整音频内容驻留内存。
+
         Args:
             file: 音频文件
             model: 模型 ID (可选)
@@ -106,37 +116,56 @@ class ASRService:
         Raises:
             HTTPException: 请求失败时抛出
         """
-        # 读取文件内容
-        file_content = await file.read()
         file_filename = file.filename or "audio.wav"
+        content_type = file.content_type or "audio/wav"
 
-        # 准备请求
-        files = {"file": (file_filename, file_content, file.content_type or "audio/wav")}
-        data = {}
-        if model:
-            data["model"] = model
+        # 临时目录用于流式落盘
+        temp_dir = tempfile.mkdtemp(prefix="asr_")
+        try:
+            ext = os.path.splitext(file_filename)[1] or ".wav"
+            input_path = os.path.join(temp_dir, f"input{ext}")
 
-        for attempt in range(self.max_retries):
-            try:
-                # 使用长超时客户端
-                response = await self.client_long_timeout.post(
-                    "/v1/audio/transcriptions",
-                    files=files,
-                    data=data,
-                )
-                response.raise_for_status()
-                result = response.json()
-                return result.get("text", "")
-            except httpx.TimeoutException as e:
-                logger.warning(f"ASR 转录请求超时 (attempt {attempt + 1}/{self.max_retries}): {e}")
-                if attempt == self.max_retries - 1:
-                    raise HTTPException(status_code=504, detail="ASR 服务响应超时")
-            except httpx.HTTPError as e:
-                logger.error(f"ASR 转录请求失败 (attempt {attempt + 1}/{self.max_retries}): {e}")
-                if attempt == self.max_retries - 1:
-                    raise HTTPException(status_code=502, detail=f"ASR 服务错误：{str(e)}")
+            # 流式写入磁盘临时文件
+            with open(input_path, "wb") as out_f:
+                while True:
+                    chunk = await file.read(CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    out_f.write(chunk)
 
-        return ""
+            data = {}
+            if model:
+                data["model"] = model
+
+            for attempt in range(self.max_retries):
+                try:
+                    # 以磁盘文件句柄发起 multipart 上传，httpx 会按需读取
+                    with open(input_path, "rb") as upload_f:
+                        files = {"file": (file_filename, upload_f, content_type)}
+                        response = await self.client_long_timeout.post(
+                            "/v1/audio/transcriptions",
+                            files=files,
+                            data=data,
+                        )
+                        response.raise_for_status()
+                        result = response.json()
+                        return result.get("text", "")
+                except httpx.TimeoutException as e:
+                    logger.warning(
+                        f"ASR 转录请求超时 (attempt {attempt + 1}/{self.max_retries}): {e}"
+                    )
+                    if attempt == self.max_retries - 1:
+                        raise HTTPException(status_code=504, detail="ASR 服务响应超时")
+                except httpx.HTTPError as e:
+                    logger.error(
+                        f"ASR 转录请求失败 (attempt {attempt + 1}/{self.max_retries}): {e}"
+                    )
+                    if attempt == self.max_retries - 1:
+                        raise HTTPException(status_code=502, detail=f"ASR 服务错误：{str(e)}")
+
+            return ""
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     async def chat_completion(
         self,
