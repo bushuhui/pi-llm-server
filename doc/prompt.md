@@ -232,3 +232,16 @@ mineru的后台服务，或者服务的ocr接口处，增加接收 docx, doc, pp
 另外，也把 memory 的配置写法，增加到 pi_llm_server/examples/config.example.yaml
 
 
+## 2026-05-04
+
+运行 ocr 处理一段时间的文档解析，会出现如下错误：
+请求失败：502
+错误信息：{'error': 'MinerU 服务错误：All connection attempts failed'}
+
+帮我改进一下程序：
+1. 如果ocr出现连接错误，或者其他错误，连续出现3次，则自动重启 ocr 服务。
+2. 重启 ocr 服务的时候，需要把 mineru 开启的服务都关掉，例如如下的服务。你查一下能否把 ocr的所有子进程都杀掉
+3412496 ?        S      0:00 /home/a409_home/anaconda3/envs/pi-llm-server/bin/python3 -m mineru.cli.fast_api --host 0.0.0.0 --port 8094
+3412500 ?        S      0:00 /home/a409_home/anaconda3/envs/pi-llm-server/bin/python3 -m mineru.cli.fast_api --host 0.0.0.0 --port 8094
+3412509 ?        S      0:00 /home/a409_home/anaconda3/envs/pi-llm-server/bin/python3 -m mineru.cli.fast_api --host 0.0.0.0 --port 8094
+3412513 ?        S      0:00 /home/a409_home/anaconda3/envs/pi-llm-server/bin/python3 -m mineru.cli.fast_api --host 0.0.0.0 --port 8094

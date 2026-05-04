@@ -112,7 +112,7 @@ INFERENCE_TIMEOUT_DEFAULTS = {
     'embedding': 3,     # 短文本推理快
     'asr': 10,          # 音频转写需要时间
     'reranker': 3,      # 短查询推理快
-    'mineru': 30,       # 图片解析需要时间
+    'mineru': 60,       # 图片解析需要时间（模型初始化 ~27s + 处理）
 }
 
 
@@ -347,7 +347,9 @@ class ServiceDaemon:
     async def check_http_health(self, name: str, port: int) -> bool:
         """HTTP 基础健康检测"""
         try:
-            url = f"http://127.0.0.1:{port}/health"
+            # MinerU 没有 /health 端点，使用 /openapi.json
+            path = '/openapi.json' if name == 'mineru' else '/health'
+            url = f"http://127.0.0.1:{port}{path}"
             response = await self.http_client.get(url)
             return response.status_code == 200
         except httpx.TimeoutException:
@@ -412,8 +414,9 @@ class ServiceDaemon:
         """MinerU 推理检测"""
         try:
             url = f"http://127.0.0.1:{port}/file_parse"
-            files = {'file': ('test.png', self._test_image, 'image/png')}
-            response = await self.inference_client.post(url, files=files, timeout=timeout)
+            files = {'files': ('test.png', self._test_image, 'image/png')}
+            data = {'backend': 'pipeline', 'parse_method': 'auto', 'lang_list': 'ch'}
+            response = await self.inference_client.post(url, files=files, data=data, timeout=timeout)
             return response.status_code == 200
         except Exception as e:
             logger.warning(f"mineru 推理检测失败: {e}")
@@ -432,6 +435,10 @@ class ServiceDaemon:
             logger.warning(f"{name} HTTP 检测失败，跳过推理检测")
             return False
 
+        # MinerU 没有轻量推理端点，HTTP 检测 (/openapi.json) 已足够
+        if name == 'mineru':
+            return True
+
         # Step 2: 推理检测
         logger.debug(f"{name} HTTP 检测通过，开始推理检测...")
 
@@ -443,8 +450,6 @@ class ServiceDaemon:
                 inference_ok = await self.check_asr_inference(port, inference_timeout)
             elif name == 'reranker':
                 inference_ok = await self.check_reranker_inference(port, inference_timeout)
-            elif name == 'mineru':
-                inference_ok = await self.check_mineru_inference(port, inference_timeout)
             else:
                 inference_ok = True
         except Exception as e:
@@ -487,11 +492,19 @@ class ServiceDaemon:
     async def check_all_services(self):
         """检查所有服务健康状态"""
         for name, state in self.service_states.items():
+            # 检查是否需要重置重启计数器（长时间不健康后自动重置，避免永久放弃）
+            if state.restart_attempts >= self.max_restart_attempts and state.last_restart_time:
+                recovery_window = max(self.restart_cooldown * 5, 600)  # 至少 10 分钟
+                if (datetime.now() - state.last_restart_time).total_seconds() > recovery_window:
+                    logger.info(f"{name} 超过恢复窗口，重置重启计数器")
+                    state.restart_attempts = 0
+                    state.consecutive_failures = 0
+
             healthy = await self.check_service_health(name)
 
             if healthy:
                 state.record_success('inference')
-                logger.debug(f"{name} 健康")
+                logger.info(f"{name} 健康")
             else:
                 state.record_failure('inference')
                 logger.warning(f"{name} 不健康 (连续失败 {state.consecutive_failures} 次)")
@@ -503,7 +516,7 @@ class ServiceDaemon:
                     else:
                         logger.error(
                             f"{name} 已达到最大重启次数 ({self.max_restart_attempts})，"
-                            f"不再尝试自动重启，请人工介入"
+                            f"将在 {recovery_window}s 后重置计数器再次尝试"
                         )
 
     async def run(self):

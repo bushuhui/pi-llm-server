@@ -123,16 +123,42 @@ start_server() {
 }
 
 stop_server() {
+    KILLED_ANY=0
+
+    # 1. 尝试停止 PID 文件中的主进程
     if [ -f "$PID_FILE" ]; then
         PID=$(cat "$PID_FILE")
         if ps -p "$PID" > /dev/null 2>&1; then
-            echo "$(date '+%Y-%m-%d %H:%M:%S') 停止 MinerU API 服务 (PID: $PID)..."
-            kill "$PID"
-            rm -f "$PID_FILE"
-            echo "$(date '+%Y-%m-%d %H:%M:%S') 已停止"
-            return 0
+            echo "$(date '+%Y-%m-%d %H:%M:%S') 停止 MinerU API 主进程 (PID: $PID)..."
+            kill "$PID" 2>/dev/null
+            KILLED_ANY=1
+        else
+            echo "$(date '+%Y-%m-%d %H:%M:%S') PID 文件中进程不存在 (PID: $PID)"
         fi
+        rm -f "$PID_FILE"
     fi
+
+    # 2. 杀掉所有残留子进程（mineru.cli.fast_api 会 fork 多个子进程）
+    sleep 1
+    CHILD_PIDS=$(pgrep -f "mineru.cli.fast_api.*--port $PORT" 2>/dev/null)
+    if [ -n "$CHILD_PIDS" ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') 发现残留子进程，正在清理: $CHILD_PIDS"
+        echo "$CHILD_PIDS" | xargs kill 2>/dev/null
+        sleep 1
+        # 强制清理仍未退出的进程
+        REMAINING=$(pgrep -f "mineru.cli.fast_api.*--port $PORT" 2>/dev/null)
+        if [ -n "$REMAINING" ]; then
+            echo "$(date '+%Y-%m-%d %H:%M:%S') 强制终止残留进程: $REMAINING"
+            echo "$REMAINING" | xargs kill -9 2>/dev/null
+        fi
+        KILLED_ANY=1
+    fi
+
+    if [ "$KILLED_ANY" -eq 1 ]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') 已停止"
+        return 0
+    fi
+
     echo "$(date '+%Y-%m-%d %H:%M:%S') MinerU API 未运行"
     return 1
 }

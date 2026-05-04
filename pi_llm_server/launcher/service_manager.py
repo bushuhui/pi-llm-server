@@ -341,6 +341,10 @@ def stop_service(service_name: str) -> bool:
         print(f"✓ {config['name']} 未运行")
         return True
 
+    # MinerU 使用 shell 脚本停止，以清理所有子进程
+    if service_name == 'mineru':
+        return _stop_mineru_service(service_name, config)
+
     pid = get_service_pid(service_name)
     if pid:
         try:
@@ -375,6 +379,37 @@ def stop_service(service_name: str) -> bool:
     else:
         # 没有 PID 文件，尝试通过端口检查找到进程
         print(f"警告：未找到 {config['name']} 的 PID 文件")
+        return False
+
+
+def _stop_mineru_service(service_name: str, config: dict) -> bool:
+    """通过 shell 脚本停止 MinerU 服务，确保清理所有子进程"""
+    script_dir = Path(__file__).parent
+    service_config = get_service_config(service_name, load_config())
+    port = service_config.get('port', config['port'])
+
+    try:
+        result = subprocess.run(
+            ['bash', str(script_dir / config['script']), 'stop',
+             '--port', str(port)],
+            capture_output=True, text=True, timeout=30
+        )
+        output = result.stdout.strip()
+        if output:
+            print(output)
+        if result.returncode == 0:
+            print(f"✓ {config['name']} 已停止")
+            return True
+        else:
+            if result.stderr:
+                print(f"停止脚本输出: {result.stderr.strip()}")
+            # 脚本返回 1 可能表示服务未运行，也算成功
+            return '未运行' in output or '已停止' in output
+    except subprocess.TimeoutExpired:
+        print(f"✗ 停止 {config['name']} 超时")
+        return False
+    except Exception as e:
+        print(f"✗ 停止 {config['name']} 失败：{e}")
         return False
 
 
