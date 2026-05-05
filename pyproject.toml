@@ -213,4 +213,5 @@ include = ["pi_llm_server*"]
 pi_llm_server = [
     "*.yaml",
     "examples/**/*",
+    "launcher/**/*",
 ]
