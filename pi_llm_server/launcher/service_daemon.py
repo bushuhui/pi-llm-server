@@ -29,6 +29,7 @@ import argparse
 import subprocess
 import struct
 import io
+import socket
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional, Any
@@ -117,6 +118,27 @@ INFERENCE_TIMEOUT_DEFAULTS = {
     'mineru': 60,       # 图片解析需要时间（模型初始化 ~27s + 处理）
     'gateway': 5,       # 仅做 HTTP 检测，无推理
 }
+
+# HTTP 检测超时配置（服务级别）
+HTTP_TIMEOUT_DEFAULTS = {
+    'embedding': 10,
+    'asr': 10,
+    'reranker': 10,
+    'mineru': 30,       # MinerU 处理大文件时可能无法及时响应 /openapi.json
+    'gateway': 10,
+}
+
+# 连续不健康阈值配置（服务级别）
+UNHEALTHY_THRESHOLD_DEFAULTS = {
+    'embedding': 3,
+    'asr': 3,
+    'reranker': 3,
+    'mineru': 3,
+    'gateway': 3,
+}
+
+# MinerU 连续超时专用阈值（更高，避免大文件处理时误杀）
+MINERU_TIMEOUT_THRESHOLD = 30
 
 
 # ==================== 测试数据生成 ====================
@@ -210,6 +232,7 @@ class ServiceState:
     def __init__(self, name: str):
         self.name = name
         self.consecutive_failures = 0
+        self.consecutive_timeouts = 0
         self.last_check_time: Optional[datetime] = None
         self.last_restart_time: Optional[datetime] = None
         self.restart_attempts = 0
@@ -219,21 +242,30 @@ class ServiceState:
     def record_success(self, check_type: str = 'http'):
         """记录成功检查"""
         self.consecutive_failures = 0
+        self.consecutive_timeouts = 0
         self.restart_attempts = 0
         self.status = 'healthy'
         self.last_check_time = datetime.now()
         self.last_check_type = check_type
 
-    def record_failure(self, check_type: str = 'http'):
+    def record_failure(self, check_type: str = 'http', failure_reason: str = 'unknown'):
         """记录失败检查"""
         self.consecutive_failures += 1
+        if failure_reason == 'timeout':
+            self.consecutive_timeouts += 1
+        else:
+            self.consecutive_timeouts = 0
         self.status = 'unhealthy'
         self.last_check_time = datetime.now()
         self.last_check_type = check_type
 
-    def is_needs_restart(self, threshold: int, cooldown: int) -> bool:
+    def is_needs_restart(self, threshold: int, cooldown: int, timeout_threshold: int = None) -> bool:
         """是否需要重启"""
-        if self.consecutive_failures < threshold:
+        # 如果当前全是超时，使用超时专用阈值（更宽容）
+        if timeout_threshold and self.consecutive_timeouts > 0:
+            if self.consecutive_timeouts < timeout_threshold:
+                return False
+        elif self.consecutive_failures < threshold:
             return False
 
         if self.last_restart_time:
@@ -250,6 +282,7 @@ class ServiceState:
         self.last_restart_time = datetime.now()
         self.restart_attempts += 1
         self.consecutive_failures = 0
+        self.consecutive_timeouts = 0
 
 
 # ==================== 守护进程核心 ====================
@@ -284,6 +317,8 @@ class ServiceDaemon:
         # 服务配置
         self.service_cooldowns: Dict[str, int] = {}
         self.service_inference_timeout: Dict[str, int] = {}
+        self.service_http_timeout: Dict[str, int] = {}
+        self.service_unhealthy_threshold: Dict[str, int] = {}
 
         # 预生成测试数据
         self._test_audio: bytes = generate_test_audio()
@@ -302,6 +337,8 @@ class ServiceDaemon:
         """加载服务级别配置"""
         daemon_cfg = self.config.get('daemon', {})
         default_cooldown = daemon_cfg.get('restart_cooldown', DEFAULT_DAEMON_CONFIG['restart_cooldown'])
+        default_http_timeout = daemon_cfg.get('http_timeout', DEFAULT_DAEMON_CONFIG['http_timeout'])
+        default_threshold = daemon_cfg.get('unhealthy_threshold', DEFAULT_DAEMON_CONFIG['unhealthy_threshold'])
         services_cfg = daemon_cfg.get('services', {})
 
         for name in ['embedding', 'asr', 'reranker', 'mineru', 'gateway']:
@@ -309,13 +346,19 @@ class ServiceDaemon:
                 svc_cfg = services_cfg[name]
                 cooldown = svc_cfg.get('restart_cooldown', SERVICE_COOLDOWN_DEFAULTS.get(name, default_cooldown))
                 inference_timeout = svc_cfg.get('inference_timeout', INFERENCE_TIMEOUT_DEFAULTS.get(name, self.inference_timeout))
+                http_timeout = svc_cfg.get('http_timeout', HTTP_TIMEOUT_DEFAULTS.get(name, default_http_timeout))
+                threshold = svc_cfg.get('unhealthy_threshold', UNHEALTHY_THRESHOLD_DEFAULTS.get(name, default_threshold))
             else:
                 cooldown = SERVICE_COOLDOWN_DEFAULTS.get(name, default_cooldown)
                 inference_timeout = INFERENCE_TIMEOUT_DEFAULTS.get(name, self.inference_timeout)
+                http_timeout = HTTP_TIMEOUT_DEFAULTS.get(name, default_http_timeout)
+                threshold = UNHEALTHY_THRESHOLD_DEFAULTS.get(name, default_threshold)
 
             self.service_cooldowns[name] = cooldown
             self.service_inference_timeout[name] = inference_timeout
-            logger.info(f"{name}: 冷却时间={cooldown}秒, 推理超时={inference_timeout}秒")
+            self.service_http_timeout[name] = http_timeout
+            self.service_unhealthy_threshold[name] = threshold
+            logger.info(f"{name}: 冷却时间={cooldown}秒, HTTP超时={http_timeout}秒, 推理超时={inference_timeout}秒, 不健康阈值={threshold}次")
 
     def _load_service_ports(self):
         """从配置文件加载服务端口"""
@@ -358,23 +401,41 @@ class ServiceDaemon:
 
     # ==================== HTTP 基础检测 ====================
 
-    async def check_http_health(self, name: str, port: int) -> bool:
-        """HTTP 基础健康检测"""
+    async def _check_port_open(self, port: int, timeout: float = 2.0) -> bool:
+        """快速端口探测：检查端口是否开放（不发送 HTTP 请求）"""
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection('127.0.0.1', port),
+                timeout=timeout
+            )
+            writer.close()
+            await writer.wait_closed()
+            return True
+        except asyncio.TimeoutError:
+            return False
+        except OSError:
+            return False
+
+    async def check_http_health(self, name: str, port: int, timeout: int = None) -> tuple[bool, str]:
+        """HTTP 基础健康检测，返回 (是否成功, 失败原因)"""
         try:
             # MinerU 没有 /health 端点，使用 /openapi.json
             path = '/openapi.json' if name == 'mineru' else '/health'
             url = f"http://127.0.0.1:{port}{path}"
-            response = await self.http_client.get(url)
-            return response.status_code == 200
+            t = timeout or self.http_timeout
+            response = await self.http_client.get(url, timeout=t)
+            if response.status_code == 200:
+                return True, "ok"
+            return False, "http_error"
         except httpx.TimeoutException:
             logger.warning(f"{name} HTTP 检测超时")
-            return False
+            return False, "timeout"
         except httpx.ConnectError:
             logger.warning(f"{name} 无法连接 (端口 {port})")
-            return False
+            return False, "connect_error"
         except Exception as e:
             logger.warning(f"{name} HTTP 检测异常: {e}")
-            return False
+            return False, "error"
 
     # ==================== 推理检测 ====================
 
@@ -438,21 +499,34 @@ class ServiceDaemon:
 
     # ==================== 综合健康检测 ====================
 
-    async def check_service_health(self, name: str) -> bool:
-        """综合健康检测：先 HTTP 检测，再推理检测"""
+    async def check_service_health(self, name: str) -> tuple[bool, str]:
+        """综合健康检测：先 HTTP 检测，再推理检测。返回 (是否健康, 失败原因)"""
         port = self._get_service_port(name)
         inference_timeout = self.service_inference_timeout.get(name, 5)
+        http_timeout = self.service_http_timeout.get(name, self.http_timeout)
+
+        # MinerU 特殊处理：先快速端口探测，区分"进程死了"和"进程在忙"
+        if name == 'mineru':
+            port_open = await self._check_port_open(port, timeout=2.0)
+            if not port_open:
+                logger.warning(f"{name} 端口 {port} 未开放，进程可能已退出")
+                return False, "connect_error"
+            # 端口通说明进程活着，继续 HTTP 检测确认是否能响应请求
+            http_ok, failure_reason = await self.check_http_health(name, port, timeout=http_timeout)
+            if not http_ok:
+                logger.warning(f"{name} HTTP 检测失败({failure_reason})，端口通但无法响应")
+                return False, failure_reason
+            return True, "ok"
 
         # Step 1: HTTP 基础检测
-        http_ok = await self.check_http_health(name, port)
+        http_ok, failure_reason = await self.check_http_health(name, port, timeout=http_timeout)
         if not http_ok:
-            logger.warning(f"{name} HTTP 检测失败，跳过推理检测")
-            return False
+            logger.warning(f"{name} HTTP 检测失败({failure_reason})，跳过推理检测")
+            return False, failure_reason
 
-        # MinerU 没有轻量推理端点，HTTP 检测 (/openapi.json) 已足够
         # Gateway 仅做 HTTP /health 检测，不做推理（推理由各子服务自行检测）
-        if name in ('mineru', 'gateway'):
-            return True
+        if name == 'gateway':
+            return True, "ok"
 
         # Step 2: 推理检测
         logger.debug(f"{name} HTTP 检测通过，开始推理检测...")
@@ -476,7 +550,7 @@ class ServiceDaemon:
         else:
             logger.warning(f"{name} 推理检测失败")
 
-        return inference_ok
+        return inference_ok, "inference_error" if not inference_ok else "ok"
 
     # ==================== 服务重启 ====================
 
@@ -521,18 +595,29 @@ class ServiceDaemon:
                     logger.info(f"{name} 超过恢复窗口，重置重启计数器")
                     state.restart_attempts = 0
                     state.consecutive_failures = 0
+                    state.consecutive_timeouts = 0
 
-            healthy = await self.check_service_health(name)
+            healthy, failure_reason = await self.check_service_health(name)
 
             if healthy:
                 state.record_success('inference')
                 logger.info(f"{name} 健康")
             else:
-                state.record_failure('inference')
-                logger.warning(f"{name} 不健康 (连续失败 {state.consecutive_failures} 次)")
+                state.record_failure('inference', failure_reason=failure_reason)
+                logger.warning(
+                    f"{name} 不健康 (连续失败 {state.consecutive_failures} 次, "
+                    f"连续超时 {state.consecutive_timeouts} 次, 原因: {failure_reason})"
+                )
 
                 cooldown = self.service_cooldowns.get(name, self.restart_cooldown)
-                if state.is_needs_restart(self.unhealthy_threshold, cooldown):
+                threshold = self.service_unhealthy_threshold.get(name, self.unhealthy_threshold)
+
+                # MinerU 特殊处理：纯超时使用更高的阈值，避免大文件处理时误杀
+                timeout_threshold = None
+                if name == 'mineru' and failure_reason == 'timeout':
+                    timeout_threshold = MINERU_TIMEOUT_THRESHOLD
+
+                if state.is_needs_restart(threshold, cooldown, timeout_threshold=timeout_threshold):
                     if state.restart_attempts < self.max_restart_attempts:
                         await self.restart_service(name)
                     else:

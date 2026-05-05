@@ -356,22 +356,163 @@ class TestDaemonGateway:
         mock_config = {"server": {"port": 8090}}
         daemon = ServiceDaemon(config=mock_config)
 
-        # mock HTTP 检测为成功
-        daemon.check_http_health = AsyncMock(return_value=True)
+        # mock HTTP 检测为成功（现在返回 tuple）
+        daemon.check_http_health = AsyncMock(return_value=(True, "ok"))
         # mock 各推理检测方法
         daemon.check_embedding_inference = AsyncMock(return_value=True)
         daemon.check_asr_inference = AsyncMock(return_value=True)
         daemon.check_reranker_inference = AsyncMock(return_value=True)
         daemon.check_mineru_inference = AsyncMock(return_value=True)
 
-        healthy = asyncio.run(daemon.check_service_health("gateway"))
+        healthy, reason = asyncio.run(daemon.check_service_health("gateway"))
 
         assert healthy is True
+        assert reason == "ok"
         # gateway 不应调用任何推理检测
         daemon.check_embedding_inference.assert_not_called()
         daemon.check_asr_inference.assert_not_called()
         daemon.check_reranker_inference.assert_not_called()
         daemon.check_mineru_inference.assert_not_called()
+
+
+class TestDaemonHealthCheck:
+    """守护进程健康检查逻辑测试"""
+
+    def test_check_http_health_returns_failure_reason(self):
+        """验证 check_http_health 返回失败原因"""
+        from pi_llm_server.launcher.service_daemon import ServiceDaemon
+
+        daemon = ServiceDaemon(config={"server": {"port": 8090}})
+
+        # 成功
+        daemon.http_client = MagicMock()
+        resp = MagicMock()
+        resp.status_code = 200
+        daemon.http_client.get = AsyncMock(return_value=resp)
+
+        ok, reason = asyncio.run(daemon.check_http_health("mineru", 8094))
+        assert ok is True
+        assert reason == "ok"
+
+    def test_service_state_tracks_timeouts_separately(self):
+        """验证 ServiceState 分别跟踪连续失败和连续超时"""
+        from pi_llm_server.launcher.service_daemon import ServiceState
+
+        state = ServiceState("mineru")
+
+        # 两次超时
+        state.record_failure(failure_reason="timeout")
+        assert state.consecutive_failures == 1
+        assert state.consecutive_timeouts == 1
+
+        state.record_failure(failure_reason="timeout")
+        assert state.consecutive_failures == 2
+        assert state.consecutive_timeouts == 2
+
+        # 一次连接失败，超时计数重置
+        state.record_failure(failure_reason="connect_error")
+        assert state.consecutive_failures == 3
+        assert state.consecutive_timeouts == 0
+
+        # 成功后全部重置
+        state.record_success()
+        assert state.consecutive_failures == 0
+        assert state.consecutive_timeouts == 0
+
+    def test_mineru_timeout_needs_higher_threshold(self):
+        """验证 MinerU 纯超时需要更多次才触发重启"""
+        from pi_llm_server.launcher.service_daemon import (
+            ServiceState, MINERU_TIMEOUT_THRESHOLD, DEFAULT_DAEMON_CONFIG,
+        )
+
+        state = ServiceState("mineru")
+
+        # 连续超时 3 次（正常阈值），不应重启
+        for _ in range(3):
+            state.record_failure(failure_reason="timeout")
+
+        threshold = DEFAULT_DAEMON_CONFIG["unhealthy_threshold"]
+        assert state.is_needs_restart(threshold, 0, timeout_threshold=MINERU_TIMEOUT_THRESHOLD) is False
+
+        # 继续超时到 MINERU_TIMEOUT_THRESHOLD 次，应重启
+        for _ in range(MINERU_TIMEOUT_THRESHOLD - 3):
+            state.record_failure(failure_reason="timeout")
+
+        assert state.is_needs_restart(threshold, 0, timeout_threshold=MINERU_TIMEOUT_THRESHOLD) is True
+
+    def test_mineru_connect_error_uses_normal_threshold(self):
+        """验证 MinerU 连接失败仍使用正常阈值"""
+        from pi_llm_server.launcher.service_daemon import (
+            ServiceState, MINERU_TIMEOUT_THRESHOLD, DEFAULT_DAEMON_CONFIG,
+        )
+
+        state = ServiceState("mineru")
+
+        # 连续连接失败 3 次，应重启（即使 timeout_threshold 很高）
+        for _ in range(3):
+            state.record_failure(failure_reason="connect_error")
+
+        threshold = DEFAULT_DAEMON_CONFIG["unhealthy_threshold"]
+        assert state.is_needs_restart(threshold, 0, timeout_threshold=MINERU_TIMEOUT_THRESHOLD) is True
+
+    def test_load_service_configs_sets_http_timeout_and_threshold(self):
+        """验证服务级 http_timeout 和 unhealthy_threshold 加载"""
+        from pi_llm_server.launcher.service_daemon import ServiceDaemon
+
+        mock_config = {
+            "server": {"port": 8090},
+            "daemon": {
+                "services": {
+                    "mineru": {
+                        "http_timeout": 45,
+                        "unhealthy_threshold": 5,
+                    }
+                }
+            },
+        }
+        daemon = ServiceDaemon(config=mock_config)
+
+        assert daemon.service_http_timeout["mineru"] == 45
+        assert daemon.service_unhealthy_threshold["mineru"] == 5
+        # 其他服务使用默认值
+        assert daemon.service_http_timeout["embedding"] == 10
+        assert daemon.service_unhealthy_threshold["embedding"] == 3
+
+    def test_mineru_port_probe_returns_connect_error_when_port_closed(self):
+        """验证 MinerU 端口不通时直接返回 connect_error，不做 HTTP 检测"""
+        from pi_llm_server.launcher.service_daemon import ServiceDaemon
+
+        mock_config = {"server": {"port": 8090}}
+        daemon = ServiceDaemon(config=mock_config)
+
+        # mock 端口探测：端口关闭
+        daemon._check_port_open = AsyncMock(return_value=False)
+        # mock HTTP 检测（不应该被调用）
+        daemon.check_http_health = AsyncMock(return_value=(True, "ok"))
+
+        healthy, reason = asyncio.run(daemon.check_service_health("mineru"))
+
+        assert healthy is False
+        assert reason == "connect_error"
+        daemon.check_http_health.assert_not_called()
+
+    def test_mineru_port_probe_allows_http_check_when_port_open(self):
+        """验证 MinerU 端口通时继续做 HTTP 检测"""
+        from pi_llm_server.launcher.service_daemon import ServiceDaemon
+
+        mock_config = {"server": {"port": 8090}}
+        daemon = ServiceDaemon(config=mock_config)
+
+        # mock 端口探测：端口通
+        daemon._check_port_open = AsyncMock(return_value=True)
+        # mock HTTP 检测：超时
+        daemon.check_http_health = AsyncMock(return_value=(False, "timeout"))
+
+        healthy, reason = asyncio.run(daemon.check_service_health("mineru"))
+
+        assert healthy is False
+        assert reason == "timeout"
+        daemon.check_http_health.assert_called_once()
 
 
 def test_convert_to_pdf_file_passes_timeout():
